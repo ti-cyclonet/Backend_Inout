@@ -1,1 +1,1 @@
-export { Application } from "./application.entity";
+export { Material } from "./material.entity";
