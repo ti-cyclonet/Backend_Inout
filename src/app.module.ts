@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ApplicationsModule } from './applications/applications.module';
+import { MaterialsModule } from './applications/material.module';
 import { CommonModule } from './common/common.module';
-import { Application } from './applications/entities/application.entity';
+import { Material } from './applications/entities/material.entity';
+
 @Module({
   imports: [
     ConfigModule.forRoot(),
@@ -15,10 +16,10 @@ import { Application } from './applications/entities/application.entity';
       database: process.env.DB_NAME,
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
-      entities: [Application],
+      entities: [Material], // Cambia Application por Material
       synchronize: true,
     }),
-    ApplicationsModule,
+    MaterialsModule, // Cambia ApplicationsModule por MaterialsModule
     CommonModule
   ],
 })
