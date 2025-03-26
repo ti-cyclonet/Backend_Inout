@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MaterialsModule } from './applications/material.module';
+import { MaterialsModule } from './materials/material.module';
+import { MaterialsTModule } from './materials-t/material.t.module';
 import { CommonModule } from './common/common.module';
-import { Material } from './applications/entities/material.entity';
+import { Material } from './materials/entities/material.entity';
+import { MaterialT } from './materials-t/entities/material-t.entity';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({ isGlobal: true }),
 
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -16,10 +19,12 @@ import { Material } from './applications/entities/material.entity';
       database: process.env.DB_NAME,
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
-      entities: [Material], // Cambia Application por Material
+      entities: [Material, MaterialT], 
       synchronize: true,
     }),
-    MaterialsModule, // Cambia ApplicationsModule por MaterialsModule
+    AuthModule,
+    MaterialsModule,
+    MaterialsTModule, 
     CommonModule
   ],
 })
