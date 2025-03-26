@@ -6,11 +6,11 @@ import { MaterialsTModule } from './materials-t/material.t.module';
 import { CommonModule } from './common/common.module';
 import { Material } from './materials/entities/material.entity';
 import { MaterialT } from './materials-t/entities/material-t.entity';
-import { AuthModule } from './auth/guards/auth.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({ isGlobal: true }),
 
     TypeOrmModule.forRoot({
       type: 'postgres',

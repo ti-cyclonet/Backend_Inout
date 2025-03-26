@@ -58,7 +58,7 @@ Asegúrate de tener instalado:
 ```bash
 git clone https://github.com/ti-cyclonet/Backend_Inout.git
 cd Backend_Inout
-
+```
 ---
 
 ## ⚡ **Configuración manual de la base de datos**
@@ -67,15 +67,17 @@ cd Backend_Inout
 
 ```bash
 docker exec -it inoutdb psql -U postgres -d InoutDB
+```
 
 ### Crear los esquemas en PostgreSQL
 ```bash
 CREATE SCHEMA manufacturing;
 CREATE SCHEMA inventory;
+```
 
 ### Asignar permisos al usuario de PostgreSQL
 ```bash
 ALTER SCHEMA manufacturing OWNER TO postgres;
 ALTER SCHEMA inventory OWNER TO postgres;
-
+```
 ---
