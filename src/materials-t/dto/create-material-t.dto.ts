@@ -33,4 +33,8 @@ export class CreateMaterialTDto {
   @IsString()
   @IsOptional()
   strUrlImage?: string;
+
+  @IsString()
+  @IsOptional()
+  strLocation?: string;
 }
