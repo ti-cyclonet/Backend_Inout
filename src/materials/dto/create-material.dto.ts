@@ -37,4 +37,7 @@ export class CreateMaterialDto {
   @IsString()
   @IsOptional()
   strLocation?: string;
+
+  @IsOptional()
+  images?: any[]; // Array de imágenes para procesar
 }

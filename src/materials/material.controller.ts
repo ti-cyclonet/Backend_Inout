@@ -4,20 +4,31 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
 
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 @Controller('materials') 
 export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Post()
-  create(@Body() createMaterialDto: CreateMaterialDto) {
-    return this.materialsService.create(createMaterialDto);
+  create(@Body() createMaterialDto: CreateMaterialDto, @GetTenantId() tenantId: string) {
+    return this.materialsService.create(createMaterialDto, tenantId);
+  }
+
+  @Get('metrics')
+  getMetrics(@GetTenantId() tenantId: string) {
+    return this.materialsService.getMetrics(tenantId);
+  }
+
+  @Get('activities')
+  getActivities(@GetTenantId() tenantId: string) {
+    return this.materialsService.getActivities(tenantId);
   }
 
   @Get()
-  findAll(@Query() paginationDto: PaginationDto) {
-    return this.materialsService.findAll(paginationDto);
+  findAll(@Query() paginationDto: PaginationDto, @GetTenantId() tenantId: string) {
+    return this.materialsService.findAll(paginationDto, tenantId);
   }
 
   @Get(':id')

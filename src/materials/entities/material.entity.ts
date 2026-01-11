@@ -1,18 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { MaterialImage } from './material-image.entity';
 
 @Entity({ name: 'materials', schema: 'manufacturing'} )
 export class Material {
   @PrimaryGeneratedColumn('uuid')
   strId: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
-  strName: string;
+  @Column({ type: 'varchar', length: 100 })
+  strTenantId: string; // Código del usuario principal
 
-  @Column({
-    type: 'text',
-    default: '/assets/img/default.jpg',
-  })
-  strUrlImage: string;
+  @Column({ type: 'varchar', length: 255, unique: false })
+  strName: string;
 
   @Column({ type: 'int', nullable: false, default: 0 })
   ingQuantity: number;
@@ -23,10 +21,10 @@ export class Material {
   @Column({ type: 'varchar', length: 500, nullable: true })
   strDescription: string;
 
-  @Column({ type: 'smallint', nullable: false, default: 0 })
+  @Column({ type: 'int', nullable: false, default: 0 })
   ingMaxStock: number;
 
-  @Column({ type: 'smallint', nullable: false, default: 0 })
+  @Column({ type: 'int', nullable: false, default: 0 })
   ingMinStock: number;
 
   @Column({ type: 'varchar', length: 50, nullable: false })
@@ -40,4 +38,7 @@ export class Material {
 
   @Column({ type: 'varchar', length: 20, nullable: true })
   strLocation: string;
+
+  @OneToMany(() => MaterialImage, image => image.material)
+  images: MaterialImage[];
 }
