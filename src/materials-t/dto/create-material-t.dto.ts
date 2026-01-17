@@ -1,24 +1,37 @@
-import { IsInt, IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNumber, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CompositionDto {
+  @IsString()
+  componentMaterialId: string;
+
+  @IsNumber()
+  quantity: number;
+}
 
 export class CreateMaterialTDto {
   @IsString()
   strName: string;
 
-  @IsInt()
-  ingQuantity: number;
+  @IsNumber()
+  @IsOptional()
+  ingQuantity?: number;
 
   @IsNumber()
-  fltPrice: number;
+  @IsOptional()
+  fltPrice?: number;
 
   @IsString()
   @IsOptional()
   strDescription?: string;
 
-  @IsInt()
-  ingMaxStock: number;
+  @IsNumber()
+  @IsOptional()
+  ingMaxStock?: number;
 
-  @IsInt()
-  ingMinStock: number;
+  @IsNumber()
+  @IsOptional()
+  ingMinStock?: number;
 
   @IsString()
   strUnitMeasure: string;
@@ -28,13 +41,16 @@ export class CreateMaterialTDto {
   dtmCreationDate?: string;
 
   @IsString()
-  strStatus: string;
-
-  @IsString()
   @IsOptional()
-  strUrlImage?: string;
+  strStatus?: string;
 
   @IsString()
   @IsOptional()
   strLocation?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CompositionDto)
+  @IsOptional()
+  composition?: CompositionDto[];
 }

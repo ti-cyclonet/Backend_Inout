@@ -8,13 +8,7 @@ export class MaterialT {
   @Column({ type: 'varchar', length: 255, unique: true })
   strName: string;
 
-  @Column({
-    type: 'text',
-    default: '/assets/img/default.jpg',
-  })
-  strUrlImage: string;
-
-  @Column({ type: 'int', nullable: false, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingQuantity: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
@@ -23,10 +17,10 @@ export class MaterialT {
   @Column({ type: 'varchar', length: 500, nullable: true })
   strDescription: string;
 
-  @Column({ type: 'smallint', nullable: false, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingMaxStock: number;
 
-  @Column({ type: 'smallint', nullable: false, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingMinStock: number;
 
   @Column({ type: 'varchar', length: 50, nullable: false })
@@ -40,4 +34,7 @@ export class MaterialT {
 
   @Column({ type: 'varchar', length: 20, nullable: true })
   strLocation: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: false })
+  strTenantId: string;
 }

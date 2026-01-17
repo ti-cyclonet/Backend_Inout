@@ -1,7 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { Material } from '../../materials/entities/material.entity';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-@Entity({ name: 'material_images', schema: 'manufacturing' })
+@Entity({ name: 'images', schema: 'manufacturing' })
 export class MaterialImage {
   @PrimaryGeneratedColumn('uuid')
   strId: string;
@@ -9,8 +8,11 @@ export class MaterialImage {
   @Column({ type: 'varchar', length: 100 })
   strTenantId: string;
 
+  @Column({ type: 'varchar', length: 50 })
+  strEntityType: string; // 'material', 'material-t', 'product', 'supplier'
+
   @Column({ type: 'uuid' })
-  strMaterialId: string;
+  strEntityId: string; // ID de la entidad relacionada
 
   @Column({ type: 'text' })
   strImageUrl: string;
@@ -20,8 +22,7 @@ export class MaterialImage {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
-
-  @ManyToOne(() => Material, material => material.images)
-  @JoinColumn({ name: 'strMaterialId' })
-  material: Material;
 }
+
+// Keep backward compatibility
+export { MaterialImage as Image };

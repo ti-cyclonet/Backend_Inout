@@ -7,7 +7,10 @@ import {
   } from '@nestjs/common';
   import { CreateMaterialTDto } from './dto/create-material-t.dto';
   import { UpdateMaterialTDto } from './dto/update-material-t.dto';
-  import { MaterialT } from './entities/material-t.entity';
+  import { MaterialT, CompositionOne } from './entities';
+  import { Activity } from '../materials/entities/activity.entity';
+  import { Material } from '../materials/entities/material.entity';
+  import { MaterialImage } from '../materials/entities/material-image.entity';
   import { InjectRepository } from '@nestjs/typeorm';
   import { DataSource, Repository } from 'typeorm';
   import { PaginationDto } from 'src/common/dtos/pagination.dto';
@@ -21,39 +24,169 @@ import {
     constructor(
       @InjectRepository(MaterialT)
       private readonly materialRepository: Repository<MaterialT>,
+
+      @InjectRepository(CompositionOne)
+      private readonly compositionRepository: Repository<CompositionOne>,
+
+      @InjectRepository(Activity)
+      private readonly activityRepository: Repository<Activity>,
+
+      @InjectRepository(Material)
+      private readonly materialBaseRepository: Repository<Material>,
+
+      @InjectRepository(MaterialImage)
+      private readonly materialImageRepository: Repository<MaterialImage>,
   
       private readonly dataSource: DataSource,
   
       private readonly cloudinaryService: CloudinaryService
     ) {}
   
-    async create(createMaterialDto: CreateMaterialTDto, file?: Express.Multer.File) {
+    async create(createMaterialDto: CreateMaterialTDto, tenantId: string) {
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
       try {
-        let imageUrl = '';
-        if (file) {
-          const result = await this.cloudinaryService.uploadImage(file, 'materials-images');
-          imageUrl = result.secure_url;
+        // 1. Subir imágenes a Cloudinary si existen
+        const { images, uploadedFiles, ...materialData } = createMaterialDto as any;
+        const imageUrls = [];
+        
+        // Handle uploaded files first (from multipart/form-data)
+        if (uploadedFiles && uploadedFiles.length > 0) {
+          for (const file of uploadedFiles) {
+            const result = await this.cloudinaryService.uploadImage(file, '/InOut/materials-t/');
+            imageUrls.push(result.secure_url);
+          }
         }
-  
+        
+        // Handle images array (base64 or blob URLs)
+        if (images && images.length > 0) {
+          for (const imageData of images) {
+            // Handle base64 data URLs
+            if (imageData.url && imageData.url.startsWith('data:')) {
+              const base64Data = imageData.url.split(',')[1];
+              const buffer = Buffer.from(base64Data, 'base64');
+              const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials-t/');
+              imageUrls.push(result.secure_url);
+            }
+            // Handle file objects (from FormData)
+            else if (imageData.file && Object.keys(imageData.file).length > 0) {
+              // If file object has buffer data
+              if (imageData.file.buffer) {
+                const result = await this.cloudinaryService.uploadImageFromBuffer(imageData.file.buffer, '/InOut/materials-t/');
+                imageUrls.push(result.secure_url);
+              }
+              // If file object has path
+              else if (imageData.file.path) {
+                const result = await this.cloudinaryService.uploadImage(imageData.file, '/InOut/materials-t/');
+                imageUrls.push(result.secure_url);
+              }
+            }
+          }
+        }
+
         const material = this.materialRepository.create({
-          ...createMaterialDto,
-          strUrlImage: imageUrl,
+          ...materialData,
+          strName: materialData.strName.toUpperCase(),
+          strTenantId: tenantId,
         });
-  
-        await this.materialRepository.save(material);
-        return material;
+
+        const savedMaterial = await queryRunner.manager.save(material) as unknown as MaterialT;
+
+        // 2. Crear registros de imágenes
+        if (imageUrls.length > 0) {
+          const materialImages = imageUrls.map(url => 
+            this.materialImageRepository.create({
+              strTenantId: tenantId,
+              strEntityType: 'material-t',
+              strEntityId: savedMaterial.strId,
+              strImageUrl: url,
+              strStatus: 'active'
+            })
+          );
+          await queryRunner.manager.save(materialImages);
+        }
+
+        // Save compositions if provided
+        if (materialData.composition && materialData.composition.length > 0) {
+          const compositions = materialData.composition.map(comp => 
+            this.compositionRepository.create({
+              strMaterialTId: savedMaterial.strId,
+              strComponentMaterialId: comp.componentMaterialId,
+              fltQuantity: comp.quantity
+            })
+          );
+          
+          await queryRunner.manager.save(compositions);
+          
+          // Update stock of component materials
+          for (const comp of materialData.composition) {
+            await queryRunner.manager.decrement(
+              Material,
+              { strId: comp.componentMaterialId },
+              'ingQuantity',
+              comp.quantity
+            );
+          }
+        }
+
+        // Save activity
+        await queryRunner.manager.save(Activity, {
+          strTenantId: tenantId,
+          strType: 'material_transformed_created',
+          strTitle: `Material compuesto creado: ${savedMaterial.strName}`,
+          strIcon: 'diagram-3',
+          strEntityId: savedMaterial.strId
+        });
+
+        await queryRunner.commitTransaction();
+        return savedMaterial;
       } catch (error) {
+        await queryRunner.rollbackTransaction();
         this.handleDBException(error);
+      } finally {
+        await queryRunner.release();
       }
     }
   
-    async findAll(paginationDto: PaginationDto) {
+    async findAll(paginationDto: PaginationDto, tenantId?: string) {
       const { limit = 10, offset = 0 } = paginationDto;
   
-      return await this.materialRepository.find({
+      const whereCondition = tenantId ? { strTenantId: tenantId } : {};
+      
+      const [materials, total] = await this.materialRepository.findAndCount({
+        where: whereCondition,
         take: limit,
         skip: offset,
       });
+
+      // Obtener las imágenes para cada material compuesto
+      const materialsWithImages = await Promise.all(
+        materials.map(async (material) => {
+          const images = await this.materialImageRepository.find({
+            where: {
+              strEntityId: material.strId,
+              strEntityType: 'material-t',
+              strStatus: 'active'
+            }
+          });
+          return {
+            ...material,
+            images: images.map(img => ({
+              strId: img.strId,
+              strImageUrl: img.strImageUrl
+            }))
+          };
+        })
+      );
+
+      return {
+        data: materialsWithImages,
+        total,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      };
     }
   
     async findOne(term: string): Promise<MaterialT> {
@@ -72,8 +205,23 @@ import {
       if (!material) {
         throw new NotFoundException(`Material con identificador '${term}' no encontrado`);
       }
-  
-      return material;
+
+      // Obtener las imágenes del material compuesto
+      const images = await this.materialImageRepository.find({
+        where: {
+          strEntityId: material.strId,
+          strEntityType: 'material-t',
+          strStatus: 'active'
+        }
+      });
+
+      return {
+        ...material,
+        images: images.map(img => ({
+          strId: img.strId,
+          strImageUrl: img.strImageUrl
+        }))
+      } as any;
     }
   
     async update(id: string, updateMaterialDto: UpdateMaterialTDto) {
@@ -125,6 +273,12 @@ import {
       } catch (error) {
         this.handleDBException(error);
       }
+    }
+
+    async getCompositions(materialTId: string) {
+      return await this.compositionRepository.find({
+        where: { strMaterialTId: materialTId }
+      });
     }
   
     private handleDBException(error: any) {

@@ -3,17 +3,19 @@ import { MaterialsTService } from './material-t.service';
 import { MaterialsTController } from './material-t.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { MaterialT } from './entities/material-t.entity';
+import { MaterialT, CompositionOne } from './entities';
+import { Activity } from '../materials/entities/activity.entity';
+import { Material } from '../materials/entities/material.entity';
+import { MaterialImage } from '../materials/entities/material-image.entity';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
 
 @Module({
   controllers: [MaterialsTController],
   providers: [MaterialsTService],
   imports: [
-    TypeOrmModule.forFeature([MaterialT]),
+    TypeOrmModule.forFeature([MaterialT, CompositionOne, Activity, Material, MaterialImage]),
     CloudinaryModule
   ],
   exports: [MaterialsTService],
 })
 export class MaterialsTModule {}
-

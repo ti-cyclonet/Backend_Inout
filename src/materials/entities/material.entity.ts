@@ -12,7 +12,7 @@ export class Material {
   @Column({ type: 'varchar', length: 255, unique: false })
   strName: string;
 
-  @Column({ type: 'int', nullable: false, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingQuantity: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
@@ -21,10 +21,10 @@ export class Material {
   @Column({ type: 'varchar', length: 500, nullable: true })
   strDescription: string;
 
-  @Column({ type: 'int', nullable: false, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingMaxStock: number;
 
-  @Column({ type: 'int', nullable: false, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingMinStock: number;
 
   @Column({ type: 'varchar', length: 50, nullable: false })
@@ -39,6 +39,5 @@ export class Material {
   @Column({ type: 'varchar', length: 20, nullable: true })
   strLocation: string;
 
-  @OneToMany(() => MaterialImage, image => image.material)
-  images: MaterialImage[];
+  // Removed images relation since MaterialImage is now generic
 }

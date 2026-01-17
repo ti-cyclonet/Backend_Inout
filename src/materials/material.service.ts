@@ -10,6 +10,7 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 import { Material } from './entities/material.entity';
 import { MaterialImage } from './entities/material-image.entity';
 import { Activity } from './entities/activity.entity';
+import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
@@ -44,7 +45,7 @@ export class MaterialsService {
           if (imageData.url && imageData.url.startsWith('data:')) {
             const base64Data = imageData.url.split(',')[1];
             const buffer = Buffer.from(base64Data, 'base64');
-            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/images/materials');
+            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials/');
             imageUrls.push(result.secure_url);
           }
         }
@@ -54,6 +55,7 @@ export class MaterialsService {
       const { images, ...materialData } = createMaterialDto;
       const material = this.materialRepository.create({
         ...materialData,
+        strName: materialData.strName.toUpperCase(),
         strTenantId: tenantId
       });
       const savedMaterial = await this.materialRepository.save(material);
@@ -63,7 +65,8 @@ export class MaterialsService {
         const materialImages = imageUrls.map(url => 
           this.materialImageRepository.create({
             strTenantId: tenantId,
-            strMaterialId: savedMaterial.strId,
+            strEntityType: 'material',
+            strEntityId: savedMaterial.strId,
             strImageUrl: url,
             strStatus: 'active'
           })
@@ -93,12 +96,31 @@ export class MaterialsService {
     const [materials, total] = await this.materialRepository.findAndCount({
       where: { strTenantId: tenantId },
       take: limit,
-      skip: offset,
-      relations: ['images']
+      skip: offset
     });
 
+    // Obtener las imágenes para cada material
+    const materialsWithImages = await Promise.all(
+      materials.map(async (material) => {
+        const images = await this.materialImageRepository.find({
+          where: {
+            strEntityId: material.strId,
+            strEntityType: 'material',
+            strStatus: 'active'
+          }
+        });
+        return {
+          ...material,
+          images: images.map(img => ({
+            strId: img.strId,
+            strImageUrl: img.strImageUrl
+          }))
+        };
+      })
+    );
+
     return {
-      data: materials,
+      data: materialsWithImages,
       total,
       page,
       limit,
@@ -106,16 +128,16 @@ export class MaterialsService {
     };
   }
 
-  async findOne(term: string): Promise<Material> {
+  async findOne(term: string, tenantId: string): Promise<Material> {
     let material: Material;
 
     if (isUUID(term)) {
       material = await this.materialRepository.findOne({
-        where: { strId: term },
+        where: { strId: term, strTenantId: tenantId },
       });
     } else {
       material = await this.materialRepository.findOne({
-        where: { strName: term },
+        where: { strName: term, strTenantId: tenantId },
       });
     }
 
@@ -123,10 +145,25 @@ export class MaterialsService {
       throw new NotFoundException(`Material con identificador '${term}' no encontrado`);
     }
 
-    return material;
+    // Obtener las imágenes del material
+    const images = await this.materialImageRepository.find({
+      where: {
+        strEntityId: material.strId,
+        strEntityType: 'material',
+        strStatus: 'active'
+      }
+    });
+
+    return {
+      ...material,
+      images: images.map(img => ({
+        strId: img.strId,
+        strImageUrl: img.strImageUrl
+      }))
+    } as any;
   }
 
-  async update(id: string, updateMaterialDto: UpdateMaterialDto) {
+  async update(id: string, updateMaterialDto: UpdateMaterialDto, tenantId: string) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -134,6 +171,7 @@ export class MaterialsService {
     try {
       let material = await this.materialRepository.preload({
         strId: id,
+        strTenantId: tenantId,
         ...updateMaterialDto,
       });
 
@@ -153,8 +191,8 @@ export class MaterialsService {
     }
   }
 
-  async remove(id: string) {
-    const material = await this.findOne(id);
+  async remove(id: string, tenantId: string) {
+    const material = await this.findOne(id, tenantId);
 
     if (!material) {
       throw new NotFoundException(`Material con id '${id}' no encontrado`);
@@ -164,9 +202,48 @@ export class MaterialsService {
     return { message: `El material con id '${id}' fue eliminado exitosamente` };
   }
 
-  async checkMaterialName(strName: string): Promise<boolean> {
-    const material = await this.materialRepository.findOne({ where: { strName } });
+  async checkMaterialName(strName: string, tenantId: string): Promise<boolean> {
+    const material = await this.materialRepository.findOne({ 
+      where: { strName, strTenantId: tenantId } 
+    });
     return !material;
+  }
+
+  async createTransformed(createMaterialDto: any, tenantId: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Crear el material transformado
+      const { composition, ...materialData } = createMaterialDto;
+      const material = this.materialRepository.create({
+        ...materialData,
+        strName: materialData.strName.toUpperCase(),
+        strTenantId: tenantId
+      });
+      const savedMaterial = await this.materialRepository.save(material);
+
+      // 2. Crear las relaciones de composición (si tienes tabla de composición)
+      // Por ahora solo guardamos el material
+
+      // 3. Registrar actividad
+      await queryRunner.manager.save(Activity, {
+        strTenantId: tenantId,
+        strType: 'material_transformed_created',
+        strTitle: `Material transformado creado: ${(savedMaterial as unknown as Material).strName}`,
+        strIcon: 'diagram-3',
+        strEntityId: (savedMaterial as unknown as Material).strId
+      });
+
+      await queryRunner.commitTransaction();
+      return savedMaterial;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async deleteAllMaterials() {
@@ -184,15 +261,25 @@ export class MaterialsService {
   }
 
   async getMetrics(tenantId: string) {
+    // Get regular materials
     const materials = await this.materialRepository.find({
       where: { strTenantId: tenantId }
     });
     
-    const totalMaterials = materials.length;
-    const activeCount = materials.filter(m => m.strStatus.toLowerCase() === 'active').length;
-    const inactiveCount = materials.filter(m => m.strStatus.toLowerCase() === 'inactive').length;
-    const lowStockCount = materials.filter(m => m.ingQuantity < m.ingMinStock).length;
-    const totalValue = materials.reduce((sum, m) => sum + (m.fltPrice * m.ingQuantity), 0);
+    // Get transformed materials using repository
+    const transformedMaterials = await this.dataSource.getRepository(MaterialT).find({
+      where: { strTenantId: tenantId }
+    });
+    
+    const totalMaterials = materials.length + transformedMaterials.length;
+    const activeCount = materials.filter(m => m.strStatus.toLowerCase() === 'active').length + 
+                      transformedMaterials.filter((m: any) => m.strStatus.toLowerCase() === 'active').length;
+    const inactiveCount = materials.filter(m => m.strStatus.toLowerCase() === 'inactive').length +
+                       transformedMaterials.filter((m: any) => m.strStatus.toLowerCase() === 'inactive').length;
+    const lowStockCount = materials.filter(m => m.ingQuantity < m.ingMinStock).length +
+                       transformedMaterials.filter((m: any) => m.ingQuantity < m.ingMinStock).length;
+    const totalValue = materials.reduce((sum, m) => sum + (m.fltPrice * m.ingQuantity), 0) +
+                     transformedMaterials.reduce((sum: number, m: any) => sum + (m.fltPrice * m.ingQuantity), 0);
 
     return {
       totalMaterials,
@@ -207,7 +294,7 @@ export class MaterialsService {
     const activities = await this.activityRepository.find({
       where: { strTenantId: tenantId },
       order: { dtmCreationDate: 'DESC' },
-      take: 10
+      take: 6
     });
 
     return activities.map(activity => ({

@@ -5,14 +5,9 @@ import { AuthService } from './auth.service';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Este endpoint ya no se usa porque la autenticación se hace en Authoriza
   @Post('login')
-  async login(@Body() credentials: { username: string; password: string }) {
-    const user = await this.authService.validateUser(credentials.username, credentials.password);
-
-    if (!user) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
-
-    return this.authService.login(user);
+  async login(@Body() credentials: { email: string; password: string }) {
+    throw new UnauthorizedException('Use Authoriza service for authentication');
   }
 }
