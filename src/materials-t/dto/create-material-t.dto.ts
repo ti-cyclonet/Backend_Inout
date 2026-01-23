@@ -48,6 +48,10 @@ export class CreateMaterialTDto {
   @IsOptional()
   strLocation?: string;
 
+  @IsInt()
+  @IsOptional()
+  categoryId?: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CompositionDto)

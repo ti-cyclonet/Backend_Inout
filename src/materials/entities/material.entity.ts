@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { MaterialImage } from './material-image.entity';
+import { Category } from '../../categories/entities/category.entity';
 
 @Entity({ name: 'materials', schema: 'manufacturing'} )
 export class Material {
@@ -8,6 +9,9 @@ export class Material {
 
   @Column({ type: 'varchar', length: 100 })
   strTenantId: string; // Código del usuario principal
+
+  @Column({ type: 'varchar', length: 50, unique: true, nullable: true })
+  strCode: string; // Código autoincremental ABC-M-00001
 
   @Column({ type: 'varchar', length: 255, unique: false })
   strName: string;
@@ -30,6 +34,9 @@ export class Material {
   @Column({ type: 'varchar', length: 50, nullable: false })
   strUnitMeasure: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: false, default: '' })
+  strDischargeUnit: string;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
 
@@ -38,6 +45,13 @@ export class Material {
 
   @Column({ type: 'varchar', length: 20, nullable: true })
   strLocation: string;
+
+  @Column({ type: 'int', nullable: true })
+  categoryId: number;
+
+  @ManyToOne(() => Category, category => category.materials)
+  @JoinColumn({ name: 'categoryId' })
+  category: Category;
 
   // Removed images relation since MaterialImage is now generic
 }

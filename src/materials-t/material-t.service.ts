@@ -11,6 +11,7 @@ import {
   import { Activity } from '../materials/entities/activity.entity';
   import { Material } from '../materials/entities/material.entity';
   import { MaterialImage } from '../materials/entities/material-image.entity';
+  import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
   import { InjectRepository } from '@nestjs/typeorm';
   import { DataSource, Repository } from 'typeorm';
   import { PaginationDto } from 'src/common/dtos/pagination.dto';
@@ -36,6 +37,9 @@ import {
 
       @InjectRepository(MaterialImage)
       private readonly materialImageRepository: Repository<MaterialImage>,
+
+      @InjectRepository(InventoryMovement)
+      private readonly inventoryMovementRepository: Repository<InventoryMovement>,
   
       private readonly dataSource: DataSource,
   
@@ -48,7 +52,10 @@ import {
       await queryRunner.startTransaction();
 
       try {
-        // 1. Subir imágenes a Cloudinary si existen
+        // 1. Generar código autoincremental
+        const code = await this.generateMaterialTCode(tenantId);
+
+        // 2. Subir imágenes a Cloudinary si existen
         const { images, uploadedFiles, ...materialData } = createMaterialDto as any;
         const imageUrls = [];
         
@@ -88,6 +95,7 @@ import {
 
         const material = this.materialRepository.create({
           ...materialData,
+          strCode: code,
           strName: materialData.strName.toUpperCase(),
           strTenantId: tenantId,
         });
@@ -122,12 +130,27 @@ import {
           
           // Update stock of component materials
           for (const comp of materialData.composition) {
+            const componentMaterial = await queryRunner.manager.findOne(Material, { where: { strId: comp.componentMaterialId } });
+            
             await queryRunner.manager.decrement(
               Material,
               { strId: comp.componentMaterialId },
               'ingQuantity',
               comp.quantity
             );
+
+            // Register inventory movement (OUT)
+            const inventoryMovement = this.inventoryMovementRepository.create({
+              strTenantId: tenantId,
+              strMaterialId: comp.componentMaterialId,
+              strType: 'OUT',
+              strReason: 'TRANSFORMED_MATERIAL',
+              fltQuantity: comp.quantity,
+              fltUnitPrice: componentMaterial?.fltPrice || 0,
+              strReferenceId: savedMaterial.strId,
+              strNotes: `Salida para material compuesto: ${savedMaterial.strName}`
+            });
+            await queryRunner.manager.save(inventoryMovement);
           }
         }
 
@@ -189,7 +212,7 @@ import {
       };
     }
   
-    async findOne(term: string): Promise<MaterialT> {
+    async findOne(term: string) {
       let material: MaterialT;
   
       if (isUUID(term)) {
@@ -221,7 +244,7 @@ import {
           strId: img.strId,
           strImageUrl: img.strImageUrl
         }))
-      } as any;
+      };
     }
   
     async update(id: string, updateMaterialDto: UpdateMaterialTDto) {
@@ -230,9 +253,12 @@ import {
       await queryRunner.startTransaction();
   
       try {
+        const { composition, ...materialData } = updateMaterialDto as any;
+  
         let material = await this.materialRepository.preload({
           strId: id,
-          ...updateMaterialDto,
+          ...materialData,
+          strName: materialData.strName ? materialData.strName.toUpperCase() : undefined,
         });
   
         if (!material) {
@@ -240,14 +266,75 @@ import {
         }
   
         material = await queryRunner.manager.save(material);
-        await queryRunner.commitTransaction();
-        await queryRunner.release();
   
+        // Update compositions if provided
+        if (composition !== undefined) {
+          // Get old compositions to calculate stock difference
+          const oldCompositions = await queryRunner.manager.find(CompositionOne, {
+            where: { strMaterialTId: id }
+          });
+
+          // Delete old compositions
+          await queryRunner.manager.delete(CompositionOne, {
+            strMaterialTId: id
+          });
+  
+          // Save new compositions and update stock
+          if (composition && composition.length > 0) {
+            const compositions = composition.map(comp => 
+              this.compositionRepository.create({
+                strMaterialTId: id,
+                strComponentMaterialId: comp.componentMaterialId,
+                fltQuantity: Number(comp.quantity)
+              })
+            );
+            await queryRunner.manager.save(compositions);
+
+            // Update stock: decrement only the additional quantities
+            for (const newComp of composition) {
+              const oldComp = oldCompositions.find(oc => oc.strComponentMaterialId === newComp.componentMaterialId);
+              const oldQty = oldComp ? Number(oldComp.fltQuantity) : 0;
+              const newQty = Number(newComp.quantity);
+              const additionalQty = newQty - oldQty;
+
+              if (additionalQty > 0) {
+                const componentMaterial = await queryRunner.manager.findOne(Material, { where: { strId: newComp.componentMaterialId } });
+                
+                await queryRunner.manager.decrement(
+                  Material,
+                  { strId: newComp.componentMaterialId },
+                  'ingQuantity',
+                  additionalQty
+                );
+
+                await queryRunner.manager.query(
+                  `INSERT INTO manufacturing.inventory_movements 
+                   ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes") 
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                  [
+                    material.strTenantId,
+                    newComp.componentMaterialId,
+                    'OUT',
+                    'TRANSFORMED_MATERIAL',
+                    additionalQty,
+                    componentMaterial?.fltPrice || 0,
+                    id,
+                    `Salida adicional para material compuesto: ${material.strName}`
+                  ]
+                );
+              }
+            }
+          }
+        }
+  
+        await queryRunner.commitTransaction();
         return material;
       } catch (error) {
         await queryRunner.rollbackTransaction();
-        await queryRunner.release();
+        this.logger.error('Error updating material-t:', error);
         this.handleDBException(error);
+      } finally {
+        await queryRunner.release();
       }
     }
   
@@ -285,5 +372,33 @@ import {
       if (error.code === '23505') throw new BadRequestException(error.detail);
       this.logger.error(error);
       throw new InternalServerErrorException(`Unexpected error, check server logs`);
+    }
+
+    private async generateMaterialTCode(tenantId: string): Promise<string> {
+      // Obtener el prefijo del contrato del tenant desde Authoriza
+      const prefix = await this.getContractPrefix(tenantId);
+      
+      // Buscar el último material compuesto creado para este tenant
+      const lastMaterial = await this.materialRepository
+        .createQueryBuilder('material')
+        .where('material.strTenantId = :tenantId', { tenantId })
+        .andWhere('material.strCode IS NOT NULL')
+        .andWhere('material.strCode LIKE :pattern', { pattern: `${prefix}-T-%` })
+        .orderBy('material.strCode', 'DESC')
+        .getOne();
+
+      let nextNumber = 1;
+      if (lastMaterial && lastMaterial.strCode) {
+        const lastNumber = parseInt(lastMaterial.strCode.split('-')[2]);
+        nextNumber = lastNumber + 1;
+      }
+
+      return `${prefix}-T-${nextNumber.toString().padStart(5, '0')}`;
+    }
+
+    private async getContractPrefix(tenantId: string): Promise<string> {
+      // Por ahora retornamos un prefijo por defecto
+      // TODO: Consultar el prefijo del contrato desde Authoriza
+      return 'ABC';
     }
   }

@@ -24,6 +24,9 @@ export class CreateMaterialDto {
   strUnitMeasure: string;
 
   @IsString()
+  strDischargeUnit: string;
+
+  @IsString()
   @IsOptional()
   dtmCreationDate?: string;
 
@@ -37,6 +40,10 @@ export class CreateMaterialDto {
   @IsString()
   @IsOptional()
   strLocation?: string;
+
+  @IsInt()
+  @IsOptional()
+  categoryId?: number;
 
   @IsOptional()
   images?: any[]; // Array de imágenes para procesar

@@ -38,7 +38,10 @@ export class MaterialsService {
 
   async create(createMaterialDto: CreateMaterialDto, tenantId: string) {
     try {
-      // 1. Validar y subir imágenes a Cloudinary
+      // 1. Generar código autoincremental
+      const code = await this.generateMaterialCode(tenantId);
+
+      // 2. Validar y subir imágenes a Cloudinary
       const imageUrls = [];
       if (createMaterialDto.images && createMaterialDto.images.length > 0) {
         for (const imageData of createMaterialDto.images) {
@@ -51,16 +54,17 @@ export class MaterialsService {
         }
       }
 
-      // 2. Crear material
+      // 3. Crear material
       const { images, ...materialData } = createMaterialDto;
       const material = this.materialRepository.create({
         ...materialData,
+        strCode: code,
         strName: materialData.strName.toUpperCase(),
         strTenantId: tenantId
       });
       const savedMaterial = await this.materialRepository.save(material);
 
-      // 3. Crear registros de imágenes
+      // 4. Crear registros de imágenes
       if (imageUrls.length > 0) {
         const materialImages = imageUrls.map(url => 
           this.materialImageRepository.create({
@@ -74,7 +78,7 @@ export class MaterialsService {
         await this.materialImageRepository.save(materialImages);
       }
 
-      // 4. Registrar actividad
+      // 5. Registrar actividad
       await this.activityRepository.save({
         strTenantId: tenantId,
         strType: 'material_created',
@@ -90,11 +94,16 @@ export class MaterialsService {
   }
 
   async findAll(paginationDto: PaginationDto, tenantId: string) {
-    const { limit = 10, page = 1 } = paginationDto;
+    const { limit = 10, page = 1, category } = paginationDto;
     const offset = (page - 1) * limit;
 
+    const whereCondition: any = { strTenantId: tenantId };
+    if (category) {
+      whereCondition.categoryId = parseInt(category);
+    }
+
     const [materials, total] = await this.materialRepository.findAndCount({
-      where: { strTenantId: tenantId },
+      where: whereCondition,
       take: limit,
       skip: offset
     });
@@ -261,25 +270,16 @@ export class MaterialsService {
   }
 
   async getMetrics(tenantId: string) {
-    // Get regular materials
+    // Get regular materials only (excluding transformed materials)
     const materials = await this.materialRepository.find({
       where: { strTenantId: tenantId }
     });
     
-    // Get transformed materials using repository
-    const transformedMaterials = await this.dataSource.getRepository(MaterialT).find({
-      where: { strTenantId: tenantId }
-    });
-    
-    const totalMaterials = materials.length + transformedMaterials.length;
-    const activeCount = materials.filter(m => m.strStatus.toLowerCase() === 'active').length + 
-                      transformedMaterials.filter((m: any) => m.strStatus.toLowerCase() === 'active').length;
-    const inactiveCount = materials.filter(m => m.strStatus.toLowerCase() === 'inactive').length +
-                       transformedMaterials.filter((m: any) => m.strStatus.toLowerCase() === 'inactive').length;
-    const lowStockCount = materials.filter(m => m.ingQuantity < m.ingMinStock).length +
-                       transformedMaterials.filter((m: any) => m.ingQuantity < m.ingMinStock).length;
-    const totalValue = materials.reduce((sum, m) => sum + (m.fltPrice * m.ingQuantity), 0) +
-                     transformedMaterials.reduce((sum: number, m: any) => sum + (m.fltPrice * m.ingQuantity), 0);
+    const totalMaterials = materials.length;
+    const activeCount = materials.filter(m => m.strStatus.toLowerCase() === 'active').length;
+    const inactiveCount = materials.filter(m => m.strStatus.toLowerCase() === 'inactive').length;
+    const lowStockCount = materials.filter(m => m.ingQuantity < m.ingMinStock).length;
+    const totalValue = materials.reduce((sum, m) => sum + (m.fltPrice * m.ingQuantity), 0);
 
     return {
       totalMaterials,
@@ -315,5 +315,45 @@ export class MaterialsService {
     if (diffDays > 0) return `Hace ${diffDays} día${diffDays > 1 ? 's' : ''}`;
     if (diffHours > 0) return `Hace ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
     return 'Hace unos minutos';
+  }
+
+  private async generateMaterialCode(tenantId: string): Promise<string> {
+    // Obtener el prefijo del contrato del tenant desde Authoriza
+    const prefix = await this.getContractPrefix(tenantId);
+    
+    // Buscar el último material creado para este tenant
+    const lastMaterial = await this.materialRepository
+      .createQueryBuilder('material')
+      .where('material.strTenantId = :tenantId', { tenantId })
+      .andWhere('material.strCode IS NOT NULL')
+      .andWhere('material.strCode LIKE :pattern', { pattern: `${prefix}-M-%` })
+      .orderBy('material.strCode', 'DESC')
+      .getOne();
+
+    let nextNumber = 1;
+    if (lastMaterial && lastMaterial.strCode) {
+      const lastNumber = parseInt(lastMaterial.strCode.split('-')[2]);
+      nextNumber = lastNumber + 1;
+    }
+
+    return `${prefix}-M-${nextNumber.toString().padStart(5, '0')}`;
+  }
+
+  private async getContractPrefix(tenantId: string): Promise<string> {
+    try {
+      // Consultar el prefijo del contrato desde Authoriza
+      const authorizaUrl = process.env.AUTHORIZA_URL || 'http://localhost:3000/api';
+      const response = await fetch(`${authorizaUrl}/contracts/tenant/${tenantId}`);
+      
+      if (response.ok) {
+        const contract = await response.json();
+        return contract.codePrefix || 'ABC';
+      }
+    } catch (error) {
+      console.error('Error obteniendo prefijo del contrato:', error);
+    }
+    
+    // Fallback a ABC si hay error
+    return 'ABC';
   }
 }

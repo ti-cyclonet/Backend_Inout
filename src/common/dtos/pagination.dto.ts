@@ -16,4 +16,7 @@ export class PaginationDto {
     @IsPositive()
     @Type( () => Number)
     page?: number;
+
+    @IsOptional()
+    category?: string;
 }
