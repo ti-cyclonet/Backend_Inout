@@ -20,7 +20,7 @@ export class PurchasesService {
       strTenantId: tenantId,
       strMaterialId: createDto.materialId,
       strSupplierId: createDto.supplierId,
-      dtmDate: new Date(createDto.date),
+      dtmDate: createDto.date,
       fltQuantity: createDto.quantity,
       fltUnitPrice: createDto.unitPrice,
       strDocument: createDto.document,

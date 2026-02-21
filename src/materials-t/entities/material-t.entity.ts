@@ -1,15 +1,17 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { Category } from '../../categories/entities/category.entity';
 
 @Entity({ name: 'materials-t', schema: 'manufacturing'} )
+@Unique(['strName', 'strTenantId'])
+@Unique(['strCode'])
 export class MaterialT {
   @PrimaryGeneratedColumn('uuid')
   strId: string;
 
-  @Column({ type: 'varchar', length: 50, unique: true, nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   strCode: string; // Código autoincremental ABC-T-00001
 
-  @Column({ type: 'varchar', length: 255, unique: true })
+  @Column({ type: 'varchar', length: 255 })
   strName: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
@@ -35,6 +37,9 @@ export class MaterialT {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
+  dtmUpdateDate: Date;
 
   @Column({ type: 'varchar', length: 20, nullable: false, default: 'Active' })
   strStatus: string;

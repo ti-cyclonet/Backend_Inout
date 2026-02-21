@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, UpdateDateColumn } from 'typeorm';
 import { MaterialImage } from './material-image.entity';
 import { Category } from '../../categories/entities/category.entity';
 
@@ -40,6 +40,9 @@ export class Material {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
 
+  @UpdateDateColumn({ type: 'timestamp' })
+  dtmUpdateDate: Date;
+
   @Column({ type: 'varchar', length: 20, nullable: false, default: 'Active' })
   strStatus: string;
 
@@ -48,6 +51,9 @@ export class Material {
 
   @Column({ type: 'int', nullable: true })
   categoryId: number;
+
+  @Column({ type: 'boolean', nullable: false, default: false })
+  blnBulkUpload: boolean;
 
   @ManyToOne(() => Category, category => category.materials)
   @JoinColumn({ name: 'categoryId' })

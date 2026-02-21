@@ -132,11 +132,9 @@ import {
           for (const comp of materialData.composition) {
             const componentMaterial = await queryRunner.manager.findOne(Material, { where: { strId: comp.componentMaterialId } });
             
-            await queryRunner.manager.decrement(
-              Material,
-              { strId: comp.componentMaterialId },
-              'ingQuantity',
-              comp.quantity
+            await queryRunner.manager.query(
+              `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
+              [comp.quantity, comp.componentMaterialId]
             );
 
             // Register inventory movement (OUT)
@@ -148,10 +146,25 @@ import {
               fltQuantity: comp.quantity,
               fltUnitPrice: componentMaterial?.fltPrice || 0,
               strReferenceId: savedMaterial.strId,
-              strNotes: `Salida para material compuesto: ${savedMaterial.strName}`
+              strNotes: `Salida para material compuesto: ${savedMaterial.strName}`,
+              dtmDate: new Date().toISOString().split('T')[0]
             });
             await queryRunner.manager.save(inventoryMovement);
           }
+
+          // Register inventory movement for transformed material (IN)
+          const entryMovement = this.inventoryMovementRepository.create({
+            strTenantId: tenantId,
+            strTransformedMaterialId: savedMaterial.strId,
+            strType: 'IN',
+            strReason: 'PRODUCTION',
+            fltQuantity: savedMaterial.ingQuantity,
+            fltUnitPrice: savedMaterial.fltPrice,
+            strReferenceId: savedMaterial.strId,
+            strNotes: `Entrada por producción de material compuesto: ${savedMaterial.strName}`,
+            dtmDate: new Date().toISOString().split('T')[0]
+          });
+          await queryRunner.manager.save(entryMovement);
         }
 
         // Save activity
@@ -180,6 +193,10 @@ import {
       
       const [materials, total] = await this.materialRepository.findAndCount({
         where: whereCondition,
+        order: {
+          dtmUpdateDate: 'DESC',
+          dtmCreationDate: 'DESC'
+        },
         take: limit,
         skip: offset,
       });
@@ -300,17 +317,15 @@ import {
               if (additionalQty > 0) {
                 const componentMaterial = await queryRunner.manager.findOne(Material, { where: { strId: newComp.componentMaterialId } });
                 
-                await queryRunner.manager.decrement(
-                  Material,
-                  { strId: newComp.componentMaterialId },
-                  'ingQuantity',
-                  additionalQty
+                await queryRunner.manager.query(
+                  `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
+                  [additionalQty, newComp.componentMaterialId]
                 );
 
                 await queryRunner.manager.query(
                   `INSERT INTO manufacturing.inventory_movements 
-                   ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes") 
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                   ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate") 
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                   [
                     material.strTenantId,
                     newComp.componentMaterialId,
@@ -319,10 +334,40 @@ import {
                     additionalQty,
                     componentMaterial?.fltPrice || 0,
                     id,
-                    `Salida adicional para material compuesto: ${material.strName}`
+                    `Salida adicional para material compuesto: ${material.strName}`,
+                    new Date().toISOString().split('T')[0]
                   ]
                 );
               }
+            }
+
+            // Calculate total additional quantity for transformed material entry
+            const totalAdditionalQty = composition.reduce((sum, newComp) => {
+              const oldComp = oldCompositions.find(oc => oc.strComponentMaterialId === newComp.componentMaterialId);
+              const oldQty = oldComp ? Number(oldComp.fltQuantity) : 0;
+              const newQty = Number(newComp.quantity);
+              const additionalQty = Math.max(0, newQty - oldQty);
+              return sum + additionalQty;
+            }, 0);
+
+            // Register entry for transformed material if there's additional quantity
+            if (totalAdditionalQty > 0) {
+              await queryRunner.manager.query(
+                `INSERT INTO manufacturing.inventory_movements 
+                 ("strTenantId", "strTransformedMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate") 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [
+                  material.strTenantId,
+                  id,
+                  'IN',
+                  'PRODUCTION',
+                  totalAdditionalQty,
+                  material.fltPrice,
+                  id,
+                  `Entrada adicional por producción de material compuesto: ${material.strName}`,
+                  new Date().toISOString().split('T')[0]
+                ]
+              );
             }
           }
         }
@@ -397,8 +442,25 @@ import {
     }
 
     private async getContractPrefix(tenantId: string): Promise<string> {
-      // Por ahora retornamos un prefijo por defecto
-      // TODO: Consultar el prefijo del contrato desde Authoriza
+      try {
+        const authorizaUrl = process.env.AUTHORIZA_URL || 'http://localhost:3000/api';
+        console.log('Consultando prefijo para tenant:', tenantId, 'URL:', `${authorizaUrl}/contracts/tenant/${tenantId}`);
+        const response = await fetch(`${authorizaUrl}/contracts/tenant/${tenantId}`);
+        
+        if (response.ok) {
+          const contract = await response.json();
+          console.log('Contrato obtenido:', contract);
+          const prefix = contract.codePrefix || contract.strCodePrefix || 'ABC';
+          console.log('Prefijo a usar:', prefix);
+          return prefix;
+        } else {
+          console.error('Error en respuesta de Authoriza:', response.status, response.statusText);
+        }
+      } catch (error) {
+        console.error('Error obteniendo prefijo del contrato:', error);
+      }
+      
+      console.log('Usando prefijo por defecto: ABC');
       return 'ABC';
     }
   }

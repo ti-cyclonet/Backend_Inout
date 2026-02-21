@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNumber, IsBoolean } from 'class-validator';
 
 export class CreateMaterialDto {
   @IsString()
@@ -47,4 +47,7 @@ export class CreateMaterialDto {
 
   @IsOptional()
   images?: any[]; // Array de imágenes para procesar
+
+  @IsOptional()
+  blnBulkUpload?: boolean;
 }

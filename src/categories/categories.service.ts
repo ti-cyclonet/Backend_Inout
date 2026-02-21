@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class CategoriesService {
@@ -99,5 +100,58 @@ export class CategoriesService {
   async remove(id: number, tenantId: string): Promise<void> {
     const category = await this.findOne(id, tenantId);
     await this.categoryRepository.remove(category);
+  }
+
+  async bulkUpload(file: Express.Multer.File, tenantId: string) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    try {
+      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(worksheet);
+
+      if (data.length === 0) {
+        throw new BadRequestException('El archivo está vacío');
+      }
+
+      const results = { success: 0, errors: [] };
+
+      for (const row of data) {
+        try {
+          const categoryName = row['Nombre*'];
+          
+          const existingCategory = await this.categoryRepository.findOne({
+            where: { name: categoryName, tenantId }
+          });
+
+          if (existingCategory) {
+            results.errors.push({ row: categoryName, error: 'Categoría ya existe' });
+            continue;
+          }
+
+          const categoryDto: CreateCategoryDto = {
+            name: categoryName,
+            description: row['Descripción'] || '',
+            status: 'active'
+          };
+
+          await this.create(categoryDto, tenantId);
+          results.success++;
+        } catch (error) {
+          results.errors.push({ row: row['Nombre*'], error: error.message });
+        }
+      }
+
+      return {
+        message: `Carga completada: ${results.success} categorías creadas`,
+        success: results.success,
+        errors: results.errors
+      };
+    } catch (error) {
+      throw new BadRequestException('Error procesando el archivo: ' + error.message);
+    }
   }
 }

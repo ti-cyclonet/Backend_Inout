@@ -19,9 +19,6 @@ export class MaterialsTController {
     @UploadedFiles() files: Express.Multer.File[],
     @GetTenantId() tenantId: string
   ) {
-    console.log('Received data:', createMaterialDto);
-    console.log('Received files:', files);
-    
     // Attach files to the DTO if they exist
     if (files && files.length > 0) {
       createMaterialDto.uploadedFiles = files;

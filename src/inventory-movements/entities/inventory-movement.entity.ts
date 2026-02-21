@@ -9,14 +9,20 @@ export class InventoryMovement {
   @Column({ type: 'varchar', length: 100 })
   strTenantId: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', nullable: true })
   strMaterialId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  strTransformedMaterialId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  strProductId: string;
 
   @Column({ type: 'varchar', length: 20 })
   strType: string; // 'IN' | 'OUT'
 
   @Column({ type: 'varchar', length: 50 })
-  strReason: string; // 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFORMED_MATERIAL'
+  strReason: string; // 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFORMED_MATERIAL' | 'SALE'
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   fltQuantity: number;
@@ -29,6 +35,9 @@ export class InventoryMovement {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   strNotes: string;
+
+  @Column({ type: 'date', nullable: true })
+  dtmDate: Date;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
