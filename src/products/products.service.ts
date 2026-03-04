@@ -270,7 +270,7 @@ export class ProductsService {
     await queryRunner.startTransaction();
 
     try {
-      const { productId, date, quantity, batchReference } = productionData;
+      const { productId, date, quantity } = productionData;
 
       // Obtener producto
       const product = await this.productRepository.findOne({
@@ -280,6 +280,9 @@ export class ProductsService {
       if (!product) {
         throw new NotFoundException('Producto no encontrado');
       }
+
+      // Generar código de lote automáticamente
+      const batchReference = await this.generateBatchCode(tenantId);
 
       // Calcular costo unitario basado en ingredientes
       const ingredients = await this.getIngredients(productId);
@@ -311,9 +314,34 @@ export class ProductsService {
 
       for (const comp of compositionTwo) {
         const totalNeeded = parseFloat(comp.fltQuantity.toString()) * parseFloat(quantity);
+        
+        // Obtener el precio del material para el registro del movimiento
+        const material = await queryRunner.manager.query(
+          `SELECT "fltPrice" FROM manufacturing.materials WHERE "strId" = $1`,
+          [comp.strMaterialId]
+        );
+        
         await queryRunner.manager.query(
           `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
           [totalNeeded, comp.strMaterialId]
+        );
+        
+        // Registrar movimiento de inventario para materiales simples
+        await queryRunner.manager.query(
+          `INSERT INTO manufacturing.inventory_movements 
+           ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate") 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            tenantId,
+            comp.strMaterialId,
+            'OUT',
+            'PRODUCTION',
+            totalNeeded,
+            material[0]?.fltPrice || 0,
+            production.strId,
+            `Salida para producción: ${product.strName} - Lote: ${batchReference}`,
+            date
+          ]
         );
       }
 
@@ -504,13 +532,36 @@ export class ProductsService {
       
       if (response.ok) {
         const contract = await response.json();
-        return contract.codePrefix || 'ABC';
+        if (!contract.codePrefix) {
+          throw new NotFoundException('Prefijo del contrato no configurado');
+        }
+        return contract.codePrefix;
       }
     } catch (error) {
       console.error('Error obteniendo prefijo del contrato:', error);
     }
     
-    return 'ABC';
+    throw new NotFoundException('No se pudo obtener el prefijo del contrato');
+  }
+
+  private async generateBatchCode(tenantId: string): Promise<string> {
+    const prefix = await this.getContractPrefix(tenantId);
+    
+    const lastProduction = await this.productionRepository
+      .createQueryBuilder('production')
+      .where('production.strTenantId = :tenantId', { tenantId })
+      .andWhere('production.strBatchReference IS NOT NULL')
+      .andWhere('production.strBatchReference LIKE :pattern', { pattern: `${prefix}-L-%` })
+      .orderBy('production.strBatchReference', 'DESC')
+      .getOne();
+
+    let nextNumber = 1;
+    if (lastProduction && lastProduction.strBatchReference) {
+      const lastNumber = parseInt(lastProduction.strBatchReference.split('-')[2]);
+      nextNumber = lastNumber + 1;
+    }
+
+    return `${prefix}-L-${nextNumber.toString().padStart(5, '0')}`;
   }
 
   async updateStock(productId: string, quantity: number, tenantId: string) {

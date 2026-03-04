@@ -11,7 +11,7 @@ export class InventoryMovementsService {
   ) {}
 
   async findByMaterial(materialId: string, tenantId?: string) {
-    const where: any = { strMaterialId: materialId, strType: 'OUT' };
+    const where: any = { strMaterialId: materialId };
     if (tenantId) {
       where.strTenantId = tenantId;
     }
