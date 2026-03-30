@@ -14,6 +14,7 @@ async function bootstrap() {
       database: process.env.DB_NAME,
       user: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
     });
     
     await client.connect();

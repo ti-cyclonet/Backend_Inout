@@ -50,6 +50,7 @@ import { Customer } from './customers/entities/customer.entity';
       schema: 'manufacturing',
       entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig], 
       synchronize: true,
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
         options: '-c search_path=manufacturing,public',
       },
