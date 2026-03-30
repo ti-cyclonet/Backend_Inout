@@ -14,6 +14,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    return { userId: payload.sub, username: payload.username };
+    // Usar basicDataId como tenantId principal, luego contractId como fallback
+    const tenantId = payload.basicDataId || payload.tenantId || payload.contractId || payload.contract_id;
+    return { 
+      id: payload.sub, 
+      email: payload.email, 
+      tenantId: tenantId 
+    };
   }
 }

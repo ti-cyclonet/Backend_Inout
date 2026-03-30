@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNumber, IsBoolean } from 'class-validator';
 
 export class CreateMaterialDto {
   @IsString()
@@ -24,6 +24,9 @@ export class CreateMaterialDto {
   strUnitMeasure: string;
 
   @IsString()
+  strDischargeUnit: string;
+
+  @IsString()
   @IsOptional()
   dtmCreationDate?: string;
 
@@ -37,4 +40,14 @@ export class CreateMaterialDto {
   @IsString()
   @IsOptional()
   strLocation?: string;
+
+  @IsInt()
+  @IsOptional()
+  categoryId?: number;
+
+  @IsOptional()
+  images?: any[]; // Array de imágenes para procesar
+
+  @IsOptional()
+  blnBulkUpload?: boolean;
 }

@@ -8,6 +8,18 @@ import { ConfigService } from '@nestjs/config';
 export class CloudinaryService {
     constructor(private configService: ConfigService) {
       }
+  async uploadImageFromBuffer(buffer: Buffer, folder: string): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      ).end(buffer);
+    });
+  }
+
   async uploadImage(file: Express.Multer.File, folder: string): Promise<UploadApiResponse> {
     return new Promise((resolve, reject) => {
       cloudinary.uploader.upload(file.path, { folder }, (error, result) => {
