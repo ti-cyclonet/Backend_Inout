@@ -28,16 +28,17 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn'],
   });
 
-  app.enableCors({
-    origin: [
-      'http://localhost:4200', 'http://localhost:4201',
-      'https://auth.cyclonet.com.co', 'https://billing.cyclonet.com.co', 'https://app.cyclonet.com.co',
-      'https://master.d249aa02o69249.amplifyapp.com', 'https://master.dccjshhnh1byc.amplifyapp.com', 'https://master.d31x1n66is2877.amplifyapp.com',
-    ],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
-  });
+  // CORS: en producción lo maneja Nginx, en local lo habilitamos aquí
+  if (process.env.NODE_ENV !== 'production') {
+    app.enableCors({
+      origin: [
+        'http://localhost:4200', 'http://localhost:4201',
+      ],
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+      credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+    });
+  }
 
   // Aumentar límite de payload para imágenes
   app.use(express.json({ limit: '10mb' }));
