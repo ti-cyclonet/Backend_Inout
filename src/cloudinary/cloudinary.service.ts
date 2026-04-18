@@ -6,12 +6,20 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class CloudinaryService {
-    constructor(private configService: ConfigService) {
-      }
+  private folderPrefix: string;
+
+  constructor(private configService: ConfigService) {
+    this.folderPrefix = this.configService.get<string>('CLOUDINARY_FOLDER_PREFIX') || '';
+  }
+
+  private prefixFolder(folder: string): string {
+    return this.folderPrefix ? `${this.folderPrefix}/${folder.replace(/^\//, '')}` : folder.replace(/^\//, '');
+  }
+
   async uploadImageFromBuffer(buffer: Buffer, folder: string): Promise<UploadApiResponse> {
     return new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
-        { folder },
+        { folder: this.prefixFolder(folder) },
         (error, result) => {
           if (error) return reject(error);
           resolve(result);
@@ -22,14 +30,11 @@ export class CloudinaryService {
 
   async uploadImage(file: Express.Multer.File, folder: string): Promise<UploadApiResponse> {
     return new Promise((resolve, reject) => {
-      cloudinary.uploader.upload(file.path, { folder }, (error, result) => {
+      cloudinary.uploader.upload(file.path, { folder: this.prefixFolder(folder) }, (error, result) => {
         if (error) return reject(error);
-        
-        // Elimina el archivo temporal después de la carga exitosa
         fs.unlink(file.path, (err) => {
           if (err) console.error("Error deleting temporary file:", err);
         });
-
         resolve(result);
       });
     });
