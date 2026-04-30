@@ -17,6 +17,7 @@ import {
   import { PaginationDto } from 'src/common/dtos/pagination.dto';
   import { validate as isUUID } from 'uuid';
   import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+  import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
   
   @Injectable()
   export class MaterialsTService {
@@ -43,7 +44,9 @@ import {
   
       private readonly dataSource: DataSource,
   
-      private readonly cloudinaryService: CloudinaryService
+      private readonly cloudinaryService: CloudinaryService,
+
+      private readonly limitEnforcementService: LimitEnforcementService,
     ) {}
   
     async create(createMaterialDto: CreateMaterialTDto, tenantId: string) {
@@ -389,8 +392,12 @@ import {
       if (!material) {
         throw new NotFoundException(`Material con id '${id}' no encontrado`);
       }
-  
+
+      const tenantId = (material as any).strTenantId;
       await this.materialRepository.remove(material);
+      if (tenantId) {
+        await this.limitEnforcementService.decrement(tenantId, 'nMaterialesT');
+      }
       return { message: `El material con id '${id}' fue eliminado exitosamente` };
     }
   

@@ -6,6 +6,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 @Injectable()
 export class CustomersService {
@@ -16,6 +17,7 @@ export class CustomersService {
     private readonly customerRepository: Repository<Customer>,
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
+    private readonly limitEnforcementService: LimitEnforcementService,
   ) {
     this.authorizaApiUrl = this.configService.get<string>('AUTHORIZA_API_URL') || 'http://localhost:3000/api';
   }
@@ -143,6 +145,9 @@ export class CustomersService {
 
     customer.isActive = false;
     await this.customerRepository.save(customer);
+    if (customer.tenantId) {
+      await this.limitEnforcementService.decrement(customer.tenantId, 'nClientes');
+    }
   }
 
   private async generateCustomerCode(tenantId: string): Promise<string> {

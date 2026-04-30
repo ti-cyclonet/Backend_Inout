@@ -1,12 +1,31 @@
+version: '3.8'
 services:
-  db:
-    image: postgres:14.3
-    restart: always
+#   db:
+#     image: postgres:14.3
+#     restart: always
+#     ports:
+#       - "5433:5432"
+#     environment:
+#       POSTGRES_PASSWORD: ${DB_PASSWORD:-Cycl0n3t@*+*}
+#       POSTGRES_DB: ${DB_NAME:-InoutDB}
+#     container_name: inoutdb
+#     volumes:
+#       - ./postgres:/var/lib/postgresql/data
+
+  backend:
+    build: .
+    container_name: inout_backend
     ports:
-      - "5433:5432"
+      - "3001:3001"
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    container_name: inoutdb
-    volumes:
-      - ./postgres:/var/lib/postgresql/data
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME:-InoutDB}
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-Cycl0n3t@*+*}
+      - DB_SSL=false
+      - JWT_SECRET=wSddeEwq2e
+      - APP_PORT=3001
+      - AUTHORIZA_API_URL=http://host.docker.internal:3000
+#    depends_on:
+#      - db

@@ -34,6 +34,8 @@ import { AuthModule } from './auth/auth.module';
 import { InventoryMovementsModule } from './inventory-movements/inventory-movements.module';
 import { CustomersModule } from './customers/customers.module';
 import { Customer } from './customers/entities/customer.entity';
+import { UsageCountersModule } from './usage-counters/usage-counters.module';
+import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
 
 @Module({
   imports: [
@@ -48,7 +50,7 @@ import { Customer } from './customers/entities/customer.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig], 
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter], 
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -69,7 +71,8 @@ import { Customer } from './customers/entities/customer.entity';
     InventoryMovementsModule,
     SalesModule,
     CustomersModule,
-    MarketplaceConfigModule
+    MarketplaceConfigModule,
+    UsageCountersModule,
   ],
 })
 export class AppModule {}
