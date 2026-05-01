@@ -133,12 +133,21 @@ export class PeriodsService {
         throw new HttpException('Error fetching active period from Authoriza', HttpStatus.BAD_GATEWAY);
       }
 
-      return await response.json();
+      const text = await response.text();
+      if (!text) return null;
+      
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       if (error.code === 'ECONNREFUSED') {
         throw new HttpException('Authoriza service is not available', HttpStatus.SERVICE_UNAVAILABLE);
       }
-      throw new HttpException(`Failed to connect to Authoriza service: ${error.message}`, HttpStatus.SERVICE_UNAVAILABLE);
+      // Don't fail the whole app if period service is temporarily unavailable
+      return null;
     }
   }
 

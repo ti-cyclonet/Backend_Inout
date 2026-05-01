@@ -4,6 +4,8 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
+import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
+import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
 
 @Controller('products')
 export class ProductsController {
@@ -19,8 +21,9 @@ export class ProductsController {
     return this.productsService.findAll(tenantId, +page || 1, +limit || 10);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post()
+  @CheckLimit('nProductos')
   create(@Body() createDto: CreateProductDto, @GetTenantId() tenantId: string) {
     return this.productsService.create(createDto, tenantId);
   }
@@ -57,8 +60,9 @@ export class ProductsController {
     return this.productsService.getIngredients(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post('production')
+  @CheckLimit('nLotes')
   createProduction(@Body() productionData: any, @GetTenantId() tenantId: string) {
     return this.productsService.createProduction(productionData, tenantId);
   }

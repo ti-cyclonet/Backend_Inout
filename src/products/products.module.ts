@@ -10,9 +10,10 @@ import { ProductProduction } from './entities/product-production.entity';
 import { Material } from '../materials/entities/material.entity';
 import { MaterialImage } from '../materials/entities/material-image.entity';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
+import { UsageCountersModule } from 'src/usage-counters/usage-counters.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Material, MaterialImage]), CloudinaryModule],
+  imports: [TypeOrmModule.forFeature([Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Material, MaterialImage]), CloudinaryModule, UsageCountersModule],
   controllers: [ProductsController, StockController, CompositionTwoController, CompositionThreeController, KardexController],
   providers: [ProductsService],
   exports: [ProductsService],

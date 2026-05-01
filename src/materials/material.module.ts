@@ -9,6 +9,7 @@ import { Material } from './entities/material.entity';
 import { MaterialImage } from './entities/material-image.entity';
 import { Activity } from './entities/activity.entity';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
+import { UsageCountersModule } from 'src/usage-counters/usage-counters.module';
 
 @Module({
   controllers: [MaterialsController],
@@ -18,7 +19,8 @@ import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
     CloudinaryModule,
     MulterModule.register({ 
       storage: memoryStorage()
-    })
+    }),
+    UsageCountersModule,
   ],
   exports: [MaterialsService],
 })
