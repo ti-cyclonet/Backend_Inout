@@ -3,6 +3,8 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
+import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 
 @Controller('customers')
 @UseGuards(JwtAuthGuard)
@@ -10,6 +12,8 @@ export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
   @Post()
+  @UseGuards(LimitEnforcementGuard)
+  @CheckLimit('nClientes')
   create(@Body() dto: CreateCustomerDto, @GetTenantId() tenantId: string) {
     return this.customersService.create(dto, tenantId);
   }

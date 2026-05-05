@@ -7,6 +7,8 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
+import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
+import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
 import * as XLSX from 'xlsx';
 
 @Controller('materials') 
@@ -18,8 +20,9 @@ export class MaterialsController {
     return this.materialsService.deleteAllMaterials();
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post()
+  @CheckLimit('nMateriales')
   create(@Body() createMaterialDto: CreateMaterialDto, @GetTenantId() tenantId: string) {
     return this.materialsService.create(createMaterialDto, tenantId);
   }

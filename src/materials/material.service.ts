@@ -16,6 +16,7 @@ import { DataSource, Repository } from 'typeorm';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { validate as isUUID } from 'uuid';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -34,7 +35,9 @@ export class MaterialsService {
 
     private readonly dataSource: DataSource,
 
-    private readonly cloudinaryService: CloudinaryService
+    private readonly cloudinaryService: CloudinaryService,
+
+    private readonly limitEnforcementService: LimitEnforcementService,
   ) {}
 
   async create(createMaterialDto: CreateMaterialDto, tenantId: string, registerActivity = true) {
@@ -273,6 +276,7 @@ export class MaterialsService {
     }
 
     await this.materialRepository.remove(material);
+    await this.limitEnforcementService.decrement(tenantId, 'nMateriales');
     return { message: `El material con id '${id}' fue eliminado exitosamente` };
   }
 

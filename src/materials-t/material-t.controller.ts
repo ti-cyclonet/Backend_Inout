@@ -6,6 +6,8 @@ import { UpdateMaterialTDto } from './dto/update-material-t.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
+import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
+import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('materials-t') // Endpoint principal
@@ -13,6 +15,8 @@ export class MaterialsTController {
   constructor(private readonly materialsService: MaterialsTService) {}
 
   @Post()
+  @UseGuards(LimitEnforcementGuard)
+  @CheckLimit('nMaterialesT')
   @UseInterceptors(FilesInterceptor('images'))
   create(
     @Body() createMaterialDto: any, 

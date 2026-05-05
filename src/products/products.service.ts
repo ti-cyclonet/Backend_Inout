@@ -10,6 +10,7 @@ import { Material } from '../materials/entities/material.entity';
 import { MaterialImage } from '../materials/entities/material-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 
 @Injectable()
 export class ProductsService {
@@ -30,6 +31,7 @@ export class ProductsService {
     private imageRepository: Repository<MaterialImage>,
     private dataSource: DataSource,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly limitEnforcementService: LimitEnforcementService,
   ) {}
 
   async create(createDto: CreateProductDto, tenantId: string): Promise<Product> {
@@ -502,6 +504,7 @@ export class ProductsService {
   async remove(id: string, tenantId: string) {
     const product = await this.findOne(id, tenantId);
     await this.productRepository.remove(product);
+    await this.limitEnforcementService.decrement(tenantId, 'nProductos');
     return { message: `Producto eliminado exitosamente` };
   }
 

@@ -9,13 +9,15 @@ import { Material } from '../materials/entities/material.entity';
 import { MaterialImage } from '../materials/entities/material-image.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
+import { UsageCountersModule } from 'src/usage-counters/usage-counters.module';
 
 @Module({
   controllers: [MaterialsTController],
   providers: [MaterialsTService],
   imports: [
     TypeOrmModule.forFeature([MaterialT, CompositionOne, Activity, Material, MaterialImage, InventoryMovement]),
-    CloudinaryModule
+    CloudinaryModule,
+    UsageCountersModule,
   ],
   exports: [MaterialsTService],
 })
