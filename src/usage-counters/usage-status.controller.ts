@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { LimitEnforcementService } from './limit-enforcement.service';
@@ -51,5 +51,35 @@ export class UsageStatusController {
       packageName: limitsResponse.packageName,
       variables,
     };
+  }
+
+  /**
+   * Get warnings for variables approaching their limit (>= 80%).
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('warnings')
+  async getUsageWarnings(@GetTenantId() tenantId: string) {
+    return this.limitEnforcementService.getUsageWarnings(tenantId);
+  }
+
+  /**
+   * Recalibrate counters for the current tenant by counting actual DB records.
+   * Fixes any drift between counters and real data.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('recalibrate')
+  async recalibrateCounters(@GetTenantId() tenantId: string) {
+    return this.limitEnforcementService.recalibrateCounters(tenantId);
+  }
+
+  /**
+   * Invalidate the limits cache for a specific tenant.
+   * Called by Authoriza when a contract's package changes.
+   * This endpoint is public so Authoriza can call it without a user JWT.
+   */
+  @Post('invalidate-cache/:tenantId')
+  async invalidateCache(@Param('tenantId') tenantId: string) {
+    this.limitEnforcementService.invalidateCache(tenantId);
+    return { message: `Cache invalidated for tenant ${tenantId}` };
   }
 }

@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, UseInterceptors } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
+import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 
 @Controller('customers')
 @UseGuards(JwtAuthGuard)
@@ -14,6 +15,7 @@ export class CustomersController {
   @Post()
   @UseGuards(LimitEnforcementGuard)
   @CheckLimit('nClientes')
+  @UseInterceptors(UsageWarningInterceptor)
   create(@Body() dto: CreateCustomerDto, @GetTenantId() tenantId: string) {
     return this.customersService.create(dto, tenantId);
   }

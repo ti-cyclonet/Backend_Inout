@@ -244,4 +244,103 @@ export class LimitEnforcementService {
   invalidateCache(tenantId: string): void {
     this.limitsCache.delete(tenantId);
   }
+
+  /**
+   * Invalidate the cache for all tenants.
+   */
+  invalidateAllCache(): void {
+    this.limitsCache.clear();
+  }
+
+  /**
+   * Recalibrate counters for a tenant by counting actual records in the database.
+   * This fixes any drift between the counter and the real number of records.
+   */
+  async recalibrateCounters(tenantId: string): Promise<{
+    tenantId: string;
+    recalibrated: { variableName: string; previousCount: number; actualCount: number }[];
+  }> {
+    const recalibrated: { variableName: string; previousCount: number; actualCount: number }[] = [];
+
+    // Count actual records for each variable
+    const countQueries: Record<string, string> = {
+      nMateriales: `SELECT COUNT(*) as count FROM manufacturing.materials WHERE "strTenantId" = $1`,
+      nMaterialesT: `SELECT COUNT(*) as count FROM manufacturing."materials-t" WHERE "strTenantId" = $1`,
+      nProductos: `SELECT COUNT(*) as count FROM manufacturing.products WHERE "strTenantId" = $1`,
+      nLotes: `SELECT COUNT(*) as count FROM manufacturing.product_productions WHERE "strTenantId" = $1`,
+      nClientes: `SELECT COUNT(*) as count FROM manufacturing.customers WHERE "tenantId" = $1 AND "isActive" = true`,
+      nVentas: `SELECT COUNT(*) as count FROM manufacturing.sales WHERE "strTenantId" = $1`,
+      nSesionesCap: `SELECT COUNT(*) as count FROM manufacturing.training_sessions WHERE "strTenantId" = $1`,
+      nProveedores: `SELECT COUNT(*) as count FROM manufacturing.suppliers WHERE "strTenantId" = $1 AND "strStatus" = 'active'`,
+    };
+
+    for (const [variableName, query] of Object.entries(countQueries)) {
+      try {
+        const result = await this.dataSource.query(query, [tenantId]);
+        const actualCount = parseInt(result[0]?.count ?? '0', 10);
+
+        // Get current counter value
+        const counter = await this.usageCounterRepository.findOne({
+          where: { tenantId, variableName },
+        });
+        const previousCount = counter?.currentCount ?? 0;
+
+        // Update if different
+        if (previousCount !== actualCount) {
+          if (counter) {
+            counter.currentCount = actualCount;
+            await this.usageCounterRepository.save(counter);
+          } else {
+            const newCounter = this.usageCounterRepository.create({
+              tenantId,
+              variableName,
+              currentCount: actualCount,
+            });
+            await this.usageCounterRepository.save(newCounter);
+          }
+
+          recalibrated.push({ variableName, previousCount, actualCount });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not recalibrate ${variableName} for tenant ${tenantId}: ${error.message}`,
+        );
+      }
+    }
+
+    return { tenantId, recalibrated };
+  }
+
+  /**
+   * Check if a tenant is approaching any limit (>= 80%) and return warnings.
+   */
+  async getUsageWarnings(tenantId: string): Promise<{
+    warnings: { variableName: string; displayName: string; currentCount: number; maxValue: number; percentage: number }[];
+  }> {
+    const limitsResponse = await this.fetchLimits(tenantId);
+    const counters = await this.getCounters(tenantId);
+    const warnings: { variableName: string; displayName: string; currentCount: number; maxValue: number; percentage: number }[] = [];
+
+    for (const limit of limitsResponse.limits) {
+      if (limit.targetApplication !== 'Inout') continue;
+
+      const counter = counters.find(c => c.variableName === limit.variableName);
+      const currentCount = counter?.currentCount ?? 0;
+      const percentage = limit.maxValue > 0
+        ? Math.round((currentCount / limit.maxValue) * 100)
+        : 0;
+
+      if (percentage >= 80) {
+        warnings.push({
+          variableName: limit.variableName,
+          displayName: limit.displayName || VARIABLE_DISPLAY_NAMES[limit.variableName] || limit.variableName,
+          currentCount,
+          maxValue: limit.maxValue,
+          percentage,
+        });
+      }
+    }
+
+    return { warnings };
+  }
 }

@@ -35,6 +35,8 @@ import { InventoryMovementsModule } from './inventory-movements/inventory-moveme
 import { CustomersModule } from './customers/customers.module';
 import { Customer } from './customers/entities/customer.entity';
 import { UsageCountersModule } from './usage-counters/usage-counters.module';
+import { TrainingSessionsModule } from './training-sessions/training-sessions.module';
+import { TrainingSession } from './training-sessions/entities/training-session.entity';
 import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
 
 @Module({
@@ -50,7 +52,7 @@ import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter], 
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession], 
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -73,6 +75,7 @@ import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
     CustomersModule,
     MarketplaceConfigModule,
     UsageCountersModule,
+    TrainingSessionsModule,
   ],
 })
 export class AppModule {}
