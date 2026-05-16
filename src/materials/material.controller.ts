@@ -9,6 +9,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
+import { UsageWarningInterceptor } from 'src/usage-counters/interceptors/usage-warning.interceptor';
 import * as XLSX from 'xlsx';
 
 @Controller('materials') 
@@ -23,6 +24,7 @@ export class MaterialsController {
   @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post()
   @CheckLimit('nMateriales')
+  @UseInterceptors(UsageWarningInterceptor)
   create(@Body() createMaterialDto: CreateMaterialDto, @GetTenantId() tenantId: string) {
     return this.materialsService.create(createMaterialDto, tenantId);
   }

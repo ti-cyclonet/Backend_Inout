@@ -441,6 +441,37 @@ export class MaterialsService {
         throw new BadRequestException('El archivo está vacío');
       }
 
+      // === VALIDACIÓN DE LÍMITE DE USO ===
+      // Verificar cuántos materiales puede crear según su paquete
+      const limitsResponse = await this.limitEnforcementService.fetchLimits(tenantId);
+      const materialLimit = limitsResponse.limits.find(l => l.variableName === 'nMateriales');
+      
+      if (materialLimit) {
+        // Obtener el contador actual
+        const counters = await this.limitEnforcementService.getCounters(tenantId);
+        const currentCounter = counters.find(c => c.variableName === 'nMateriales');
+        const currentCount = currentCounter?.currentCount ?? 0;
+        const maxValue = materialLimit.maxValue;
+        const availableSlots = maxValue - currentCount;
+
+        if (availableSlots <= 0) {
+          throw new BadRequestException(
+            `Límite alcanzado: Ya tienes ${currentCount}/${maxValue} materiales. ` +
+            `Tu paquete "${limitsResponse.packageName}" no permite crear más materiales. ` +
+            `Actualiza tu plan para continuar.`
+          );
+        }
+
+        if (data.length > availableSlots) {
+          throw new BadRequestException(
+            `Límite excedido: Intentas cargar ${data.length} materiales, pero solo puedes crear ${availableSlots} más. ` +
+            `Tu paquete "${limitsResponse.packageName}" permite un máximo de ${maxValue} materiales ` +
+            `y ya tienes ${currentCount} creados.`
+          );
+        }
+      }
+      // === FIN VALIDACIÓN DE LÍMITE ===
+
       const results = { success: 0, errors: [] };
 
       for (const row of data) {
@@ -500,6 +531,15 @@ export class MaterialsService {
         }
       }
 
+      // Incrementar el contador de uso por la cantidad de materiales creados exitosamente
+      if (results.success > 0) {
+        for (let i = 0; i < results.success; i++) {
+          await this.limitEnforcementService.validateAndIncrement(tenantId, 'nMateriales').catch(() => {
+            // Si falla el incremento individual, intentar con query directa
+          });
+        }
+      }
+
       // Registrar actividad de carga masiva
       await this.activityRepository.save({
         strTenantId: tenantId,
@@ -515,6 +555,9 @@ export class MaterialsService {
         errors: results.errors
       };
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       throw new BadRequestException('Error procesando el archivo: ' + error.message);
     }
   }
@@ -558,6 +601,59 @@ export class MaterialsService {
         return { valid: false, message: 'La hoja de cálculo está vacía. Debe contener al menos una fila de datos además del encabezado', errors: [], totalRows: 0, validRows: 0 };
       }
 
+      // === VALIDACIÓN DE LÍMITE DE USO ===
+      let limitWarning: string | null = null;
+      try {
+        const limitsResponse = await this.limitEnforcementService.fetchLimits(tenantId);
+        const materialLimit = limitsResponse.limits.find(l => l.variableName === 'nMateriales');
+        
+        if (materialLimit) {
+          const counters = await this.limitEnforcementService.getCounters(tenantId);
+          const currentCounter = counters.find(c => c.variableName === 'nMateriales');
+          const currentCount = currentCounter?.currentCount ?? 0;
+          const maxValue = materialLimit.maxValue;
+          const availableSlots = maxValue - currentCount;
+
+          if (availableSlots <= 0) {
+            return {
+              valid: false,
+              message: `Límite alcanzado: Ya tienes ${currentCount}/${maxValue} materiales. Tu paquete "${limitsResponse.packageName}" no permite crear más. Actualiza tu plan.`,
+              errors: [],
+              totalRows: data.length,
+              validRows: 0,
+              limitExceeded: true,
+              packageName: limitsResponse.packageName,
+              currentCount,
+              maxValue
+            };
+          }
+
+          if (data.length > availableSlots) {
+            return {
+              valid: false,
+              message: `Límite excedido: Intentas cargar ${data.length} materiales, pero solo puedes crear ${availableSlots} más. Tu paquete "${limitsResponse.packageName}" permite máximo ${maxValue} materiales (tienes ${currentCount}).`,
+              errors: [],
+              totalRows: data.length,
+              validRows: 0,
+              limitExceeded: true,
+              packageName: limitsResponse.packageName,
+              currentCount,
+              maxValue,
+              availableSlots
+            };
+          }
+
+          // Advertencia si se acerca al límite
+          const percentageAfterUpload = ((currentCount + data.length) / maxValue) * 100;
+          if (percentageAfterUpload >= 80) {
+            limitWarning = `Atención: Después de esta carga tendrás ${currentCount + data.length}/${maxValue} materiales (${Math.round(percentageAfterUpload)}% de tu límite en "${limitsResponse.packageName}").`;
+          }
+        }
+      } catch (limitError) {
+        this.logger.warn(`Could not validate limits: ${limitError.message}`);
+      }
+      // === FIN VALIDACIÓN DE LÍMITE ===
+
       const errors = [];
       const validRows = [];
       const requiredColumns = ['Nombre*', 'Unidad Medida*', 'Unidad Descarga*', 'Stock Máximo*', 'Stock Mínimo*', 'ID Categoría*'];
@@ -597,13 +693,19 @@ export class MaterialsService {
         }
       }
 
-      return {
+      const result: any = {
         valid: errors.length === 0,
         message: errors.length === 0 ? `${data.length} materiales listos para cargar` : `${errors.length} errores encontrados en ${data.length} filas`,
         errors,
         totalRows: data.length,
         validRows: validRows.length
       };
+
+      if (limitWarning) {
+        result.limitWarning = limitWarning;
+      }
+
+      return result;
     } catch (error) {
       this.logger.error('Error validating file:', error);
       this.logger.error('Stack:', error.stack);

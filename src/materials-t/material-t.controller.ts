@@ -8,6 +8,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
+import { UsageWarningInterceptor } from 'src/usage-counters/interceptors/usage-warning.interceptor';
 
 @UseGuards(JwtAuthGuard)
 @Controller('materials-t') // Endpoint principal
@@ -17,7 +18,7 @@ export class MaterialsTController {
   @Post()
   @UseGuards(LimitEnforcementGuard)
   @CheckLimit('nMaterialesT')
-  @UseInterceptors(FilesInterceptor('images'))
+  @UseInterceptors(FilesInterceptor('images'), UsageWarningInterceptor)
   create(
     @Body() createMaterialDto: any, 
     @UploadedFiles() files: Express.Multer.File[],

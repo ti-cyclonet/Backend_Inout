@@ -1,6 +1,6 @@
 /**
  * Mapeo estático de variables de límite a recursos controlados.
- * Las 8 variables de InOut están predefinidas en código (enfoque estático).
+ * Las variables de InOut están predefinidas en código (enfoque estático).
  */
 
 /** Variable name → resource identifier */
@@ -13,6 +13,7 @@ export const VARIABLE_RESOURCE_MAP: Record<string, string> = {
   nClientes: 'customers',
   nVentas: 'sales',
   nSesionesCap: 'training-sessions',
+  nProveedores: 'suppliers',
 };
 
 /** Resource identifier → variable name */
@@ -25,6 +26,7 @@ export const RESOURCE_VARIABLE_MAP: Record<string, string> = {
   'customers': 'nClientes',
   'sales': 'nVentas',
   'training-sessions': 'nSesionesCap',
+  'suppliers': 'nProveedores',
 };
 
 /** Display names for each variable */
@@ -37,6 +39,7 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   nClientes: 'Clientes',
   nVentas: 'Ventas',
   nSesionesCap: 'Sesiones de Capacitación',
+  nProveedores: 'Proveedores',
 };
 
 /** All known variable names */

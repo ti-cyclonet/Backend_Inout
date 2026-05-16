@@ -6,6 +6,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
+import { UsageWarningInterceptor } from 'src/usage-counters/interceptors/usage-warning.interceptor';
 
 @Controller('products')
 export class ProductsController {
@@ -24,6 +25,7 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post()
   @CheckLimit('nProductos')
+  @UseInterceptors(UsageWarningInterceptor)
   create(@Body() createDto: CreateProductDto, @GetTenantId() tenantId: string) {
     return this.productsService.create(createDto, tenantId);
   }
@@ -63,6 +65,7 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post('production')
   @CheckLimit('nLotes')
+  @UseInterceptors(UsageWarningInterceptor)
   createProduction(@Body() productionData: any, @GetTenantId() tenantId: string) {
     return this.productsService.createProduction(productionData, tenantId);
   }

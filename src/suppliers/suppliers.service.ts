@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Supplier } from './entities/supplier.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { CommonService } from '../common/common.service';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 @Injectable()
 export class SuppliersService {
@@ -11,6 +12,7 @@ export class SuppliersService {
     @InjectRepository(Supplier)
     private supplierRepository: Repository<Supplier>,
     private commonService: CommonService,
+    private readonly limitEnforcementService: LimitEnforcementService,
   ) {}
 
   async findAll(tenantId: string): Promise<Supplier[]> {
@@ -58,5 +60,20 @@ export class SuppliersService {
     }
 
     return `${prefix}-S-${nextNumber.toString().padStart(5, '0')}`;
+  }
+
+  async remove(id: string, tenantId: string): Promise<{ message: string }> {
+    const supplier = await this.supplierRepository.findOne({
+      where: { strId: id, strTenantId: tenantId },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException(`Proveedor con id '${id}' no encontrado`);
+    }
+
+    supplier.strStatus = 'inactive';
+    await this.supplierRepository.save(supplier);
+    await this.limitEnforcementService.decrement(tenantId, 'nProveedores');
+    return { message: 'Proveedor eliminado exitosamente' };
   }
 }
