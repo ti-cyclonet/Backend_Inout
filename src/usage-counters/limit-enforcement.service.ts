@@ -15,6 +15,7 @@ import { ALL_VARIABLE_NAMES, VARIABLE_DISPLAY_NAMES } from './constants/resource
 interface TenantLimitsResponse {
   contractId: string;
   packageName: string;
+  isBillable: boolean;
   limits: {
     variableName: string;
     displayName: string;
