@@ -49,6 +49,7 @@ export class UsageStatusController {
     return {
       tenantId,
       packageName: limitsResponse.packageName,
+      isBillable: limitsResponse.isBillable,
       variables,
     };
   }
