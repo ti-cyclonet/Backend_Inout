@@ -24,6 +24,7 @@ export class PurchasesService {
       fltQuantity: createDto.quantity,
       fltUnitPrice: createDto.unitPrice,
       strDocument: createDto.document,
+      dtmExpirationDate: createDto.expirationDate || null,
     });
 
     const savedPurchase = await this.purchaseRepository.save(purchase);

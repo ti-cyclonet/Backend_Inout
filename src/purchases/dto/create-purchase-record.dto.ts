@@ -24,4 +24,8 @@ export class CreatePurchaseRecordDto {
   @IsString()
   @IsOptional()
   document?: string;
+
+  @IsDateString()
+  @IsOptional()
+  expirationDate?: string;
 }

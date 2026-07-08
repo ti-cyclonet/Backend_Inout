@@ -28,6 +28,9 @@ export class PurchaseRecord {
   @Column({ type: 'varchar', length: 255, nullable: true })
   strDocument: string;
 
+  @Column({ type: 'date', nullable: true })
+  dtmExpirationDate: Date;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
 
