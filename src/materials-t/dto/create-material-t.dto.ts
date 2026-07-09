@@ -57,4 +57,8 @@ export class CreateMaterialTDto {
   @Type(() => CompositionDto)
   @IsOptional()
   composition?: CompositionDto[];
+
+  @IsArray()
+  @IsOptional()
+  images?: any[];
 }

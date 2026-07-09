@@ -273,7 +273,7 @@ import {
       await queryRunner.startTransaction();
   
       try {
-        const { composition, ...materialData } = updateMaterialDto as any;
+        const { composition, images, ...materialData } = updateMaterialDto as any;
   
         let material = await this.materialRepository.preload({
           strId: id,
@@ -286,6 +286,44 @@ import {
         }
   
         material = await queryRunner.manager.save(material);
+
+        // Handle images if provided
+        if (images && images.length > 0) {
+          const imageUrls = [];
+          for (const imageData of images) {
+            if (imageData.url && imageData.url.startsWith('data:')) {
+              // New image - upload to Cloudinary
+              const base64Data = imageData.url.split(',')[1];
+              const buffer = Buffer.from(base64Data, 'base64');
+              const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials-t/');
+              imageUrls.push(result.secure_url);
+            } else if (imageData.url && imageData.url.startsWith('http')) {
+              // Existing image - keep as is
+              imageUrls.push(imageData.url);
+            }
+          }
+
+          if (imageUrls.length > 0) {
+            // Mark old images as inactive
+            await queryRunner.manager.update(
+              MaterialImage,
+              { strEntityId: id, strEntityType: 'material-t' },
+              { strStatus: 'inactive' }
+            );
+
+            // Create new image records
+            const materialImages = imageUrls.map(url => 
+              this.materialImageRepository.create({
+                strTenantId: material.strTenantId,
+                strEntityType: 'material-t',
+                strEntityId: id,
+                strImageUrl: url,
+                strStatus: 'active'
+              })
+            );
+            await queryRunner.manager.save(materialImages);
+          }
+        }
   
         // Update compositions if provided
         if (composition !== undefined) {
