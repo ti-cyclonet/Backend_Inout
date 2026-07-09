@@ -450,15 +450,12 @@ import {
 
     private async getContractPrefix(tenantId: string): Promise<string> {
       try {
-        const authorizaUrl = process.env.AUTHORIZA_URL || 'http://localhost:3000/api';
-        console.log('Consultando prefijo para tenant:', tenantId, 'URL:', `${authorizaUrl}/contracts/tenant/${tenantId}`);
-        const response = await fetch(`${authorizaUrl}/contracts/tenant/${tenantId}`);
+        const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
+        const response = await fetch(`${authorizaUrl}/api/contracts/tenant/${tenantId}`);
         
         if (response.ok) {
           const contract = await response.json();
-          console.log('Contrato obtenido:', contract);
           const prefix = contract.codePrefix || contract.strCodePrefix || 'ABC';
-          console.log('Prefijo a usar:', prefix);
           return prefix;
         } else {
           console.error('Error en respuesta de Authoriza:', response.status, response.statusText);
@@ -467,7 +464,6 @@ import {
         console.error('Error obteniendo prefijo del contrato:', error);
       }
       
-      console.log('Usando prefijo por defecto: ABC');
       return 'ABC';
     }
   }
