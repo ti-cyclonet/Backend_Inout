@@ -530,8 +530,8 @@ export class ProductsService {
 
   private async getContractPrefix(tenantId: string): Promise<string> {
     try {
-      const authorizaUrl = process.env.AUTHORIZA_URL || 'http://localhost:3000/api';
-      const response = await fetch(`${authorizaUrl}/contracts/tenant/${tenantId}`);
+      const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
+      const response = await fetch(`${authorizaUrl}/api/contracts/tenant/${tenantId}`);
       
       if (response.ok) {
         const contract = await response.json();
