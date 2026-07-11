@@ -16,6 +16,8 @@ interface TenantLimitsResponse {
   contractId: string;
   packageName: string;
   isBillable: boolean;
+  startDate: string | null;
+  endDate: string | null;
   limits: {
     variableName: string;
     displayName: string;
@@ -343,5 +345,21 @@ export class LimitEnforcementService {
     }
 
     return { warnings };
+  }
+
+  /**
+   * Reset a specific counter to 0 for monthly billing resets.
+   * Only allowed for production_batches and sales.
+   */
+  async resetCounter(tenantId: string, variableName: string): Promise<void> {
+    const counter = await this.usageCounterRepository.findOne({
+      where: { tenantId, variableName },
+    });
+
+    if (counter) {
+      counter.currentCount = 0;
+      await this.usageCounterRepository.save(counter);
+      this.logger.log(`Counter ${variableName} reset to 0 for tenant ${tenantId}`);
+    }
   }
 }

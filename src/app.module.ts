@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { MaterialsModule } from './materials/material.module';
 import { MaterialsTModule } from './materials-t/material.t.module';
 import { TasksModule } from './tasks/tasks.module';
@@ -78,4 +79,8 @@ import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
     TrainingSessionsModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(LoggerMiddleware).forRoutes('*');
+  }
+}

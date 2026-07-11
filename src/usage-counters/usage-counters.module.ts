@@ -7,6 +7,7 @@ import { LimitEnforcementService } from './limit-enforcement.service';
 import { LimitEnforcementGuard } from './guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from './interceptors/usage-warning.interceptor';
 import { UsageStatusController } from './usage-status.controller';
+import { MonthlyResetCron } from './monthly-reset.cron';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { UsageStatusController } from './usage-status.controller';
     HttpModule,
   ],
   controllers: [UsageStatusController],
-  providers: [UsageCountersService, LimitEnforcementService, LimitEnforcementGuard, UsageWarningInterceptor],
+  providers: [UsageCountersService, LimitEnforcementService, LimitEnforcementGuard, UsageWarningInterceptor, MonthlyResetCron],
   exports: [LimitEnforcementService, LimitEnforcementGuard, UsageWarningInterceptor],
 })
 export class UsageCountersModule {}
