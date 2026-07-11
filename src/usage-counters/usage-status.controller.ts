@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { LimitEnforcementService } from './limit-enforcement.service';
@@ -50,6 +50,20 @@ export class UsageStatusController {
       tenantId,
       packageName: limitsResponse.packageName,
       isBillable: limitsResponse.isBillable,
+      planTimeline: (() => {
+        const temporalLimit = limitsResponse.limits.find(
+          (l) => l.variableName === 'nDiasUso' && l.maxValue > 0,
+        );
+        if (!temporalLimit || !limitsResponse.startDate) return null;
+        const startDate = new Date(limitsResponse.startDate);
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + temporalLimit.maxValue);
+        return {
+          startDate: limitsResponse.startDate,
+          endDate: endDate.toISOString(),
+          totalDays: temporalLimit.maxValue,
+        };
+      })(),
       variables,
     };
   }
@@ -82,5 +96,23 @@ export class UsageStatusController {
   async invalidateCache(@Param('tenantId') tenantId: string) {
     this.limitEnforcementService.invalidateCache(tenantId);
     return { message: `Cache invalidated for tenant ${tenantId}` };
+  }
+
+  /**
+   * Reset a monthly counter (production_batches, sales) to 0.
+   * Used for monthly billing cycle resets.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('reset-counter')
+  async resetCounter(
+    @GetTenantId() tenantId: string,
+    @Body('variableName') variableName: string,
+  ) {
+    const allowedResetVariables = ['nLotes', 'nVentas'];
+    if (!allowedResetVariables.includes(variableName)) {
+      return { success: false, message: 'Esta variable no permite reset mensual.' };
+    }
+    await this.limitEnforcementService.resetCounter(tenantId, variableName);
+    return { success: true, message: `Contador de ${variableName} reseteado exitosamente.` };
   }
 }
