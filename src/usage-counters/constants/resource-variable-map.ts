@@ -12,6 +12,7 @@ export const VARIABLE_RESOURCE_MAP: Record<string, string> = {
   nLotes: 'product-productions',
   nClientes: 'customers',
   nVentas: 'sales',
+  nPedidos: 'orders',
   nSesionesCap: 'training-sessions',
   nProveedores: 'suppliers',
 };
@@ -25,6 +26,7 @@ export const RESOURCE_VARIABLE_MAP: Record<string, string> = {
   'product-productions': 'nLotes',
   'customers': 'nClientes',
   'sales': 'nVentas',
+  'orders': 'nPedidos',
   'training-sessions': 'nSesionesCap',
   'suppliers': 'nProveedores',
 };
@@ -38,6 +40,7 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   nLotes: 'Lotes de Producción',
   nClientes: 'Clientes',
   nVentas: 'Ventas',
+  nPedidos: 'Pedidos',
   nSesionesCap: 'Sesiones de Capacitación',
   nProveedores: 'Proveedores',
 };

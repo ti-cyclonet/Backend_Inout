@@ -11,7 +11,7 @@ import { UsageCounter } from './entities/usage-counter.entity';
 @Injectable()
 export class MonthlyResetCron {
   private readonly logger = new Logger('MonthlyResetCron');
-  private readonly monthlyVariables = ['nLotes', 'nVentas'];
+  private readonly monthlyVariables = ['nLotes', 'nVentas', 'nPedidos'];
 
   constructor(
     @InjectRepository(UsageCounter)

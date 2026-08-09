@@ -1,9 +1,12 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, UseInterceptors } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { OrderStatus } from './entities/order.entity';
+import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
+import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
+import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -11,6 +14,9 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post()
+  @UseGuards(LimitEnforcementGuard)
+  @CheckLimit('nPedidos')
+  @UseInterceptors(UsageWarningInterceptor)
   create(@Body() createDto: CreateOrderDto, @GetTenantId() tenantId: string) {
     return this.ordersService.create(createDto, tenantId);
   }

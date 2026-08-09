@@ -108,7 +108,7 @@ export class UsageStatusController {
     @GetTenantId() tenantId: string,
     @Body('variableName') variableName: string,
   ) {
-    const allowedResetVariables = ['nLotes', 'nVentas'];
+    const allowedResetVariables = ['nLotes', 'nVentas', 'nPedidos'];
     if (!allowedResetVariables.includes(variableName)) {
       return { success: false, message: 'Esta variable no permite reset mensual.' };
     }
