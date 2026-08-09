@@ -104,6 +104,12 @@ export class StockController {
   updateStock(@Param('id') id: string, @Body() updateData: { quantity: number }, @GetTenantId() tenantId: string) {
     return this.productsService.updateStock(id, updateData.quantity, tenantId);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('alerts')
+  getStockAlerts(@GetTenantId() tenantId: string) {
+    return this.productsService.getStockAlerts(tenantId);
+  }
 }
 
 @Controller('compositionTwo')

@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { PurchasesService } from './purchases.service';
-import { CreatePurchaseRecordDto } from './dto/create-purchase-record.dto';
+import { CreatePurchaseRecordDto, CreateBulkPurchaseDto } from './dto/create-purchase-record.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('purchases')
@@ -12,6 +12,12 @@ export class PurchasesController {
   create(@Body() createDto: CreatePurchaseRecordDto, @Request() req) {
     const tenantId = req.user.tenantId;
     return this.purchasesService.create(createDto, tenantId);
+  }
+
+  @Post('bulk')
+  createBulk(@Body() createBulkDto: CreateBulkPurchaseDto, @Request() req) {
+    const tenantId = req.user.tenantId;
+    return this.purchasesService.createBulk(createBulkDto, tenantId);
   }
 
   @Get('material/:materialId')

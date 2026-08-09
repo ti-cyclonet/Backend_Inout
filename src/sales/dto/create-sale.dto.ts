@@ -21,6 +21,10 @@ export class CreateSaleDto {
   customerName?: string;
 
   @IsOptional()
+  @IsString()
+  customerId?: string;
+
+  @IsOptional()
   items?: any;
 
   @IsOptional()

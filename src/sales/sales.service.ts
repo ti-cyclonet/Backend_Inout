@@ -90,6 +90,7 @@ export class SalesService {
         fltQuantity: fltQuantity,
         fltUnitPrice: fltUnitPrice,
         customerName: customerName,
+        strCustomerId: createDto.customerId || null,
         items: createDto.items,
         subtotal: createDto.subtotal,
         tax: createDto.tax,

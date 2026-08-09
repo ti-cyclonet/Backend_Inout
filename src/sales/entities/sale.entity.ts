@@ -27,6 +27,9 @@ export class Sale {
   @Column({ type: 'varchar', length: 255, nullable: true })
   customerName: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  strCustomerId: string;
+
   @Column({ type: 'jsonb', nullable: true })
   items: any;
 

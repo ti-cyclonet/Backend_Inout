@@ -582,6 +582,57 @@ export class ProductsService {
     return { message: 'Stock actualizado exitosamente', product };
   }
 
+  async getStockAlerts(tenantId: string) {
+    // Get products with low stock
+    const products = await this.productRepository
+      .createQueryBuilder('product')
+      .where('product.strTenantId = :tenantId', { tenantId })
+      .andWhere('product.ingStockMin IS NOT NULL')
+      .andWhere('product.ingStockMin > 0')
+      .andWhere('product.ingQuantity <= product.ingStockMin')
+      .getMany();
+
+    // Get materials with low stock
+    const materials = await this.materialRepository
+      .createQueryBuilder('material')
+      .where('material.strTenantId = :tenantId', { tenantId })
+      .andWhere('material.ingMinStock IS NOT NULL')
+      .andWhere('material.ingMinStock > 0')
+      .andWhere('material.ingQuantity <= material.ingMinStock')
+      .getMany();
+
+    const productAlerts = products.map(p => ({
+      id: p.strId,
+      code: p.strCode,
+      name: p.strName,
+      type: 'product' as const,
+      currentStock: parseFloat(p.ingQuantity?.toString() || '0'),
+      minStock: parseFloat(p.ingStockMin?.toString() || '0'),
+      maxStock: parseFloat(p.ingStockMax?.toString() || '0'),
+      unit: p.strMeasurementUnit,
+      severity: parseFloat(p.ingQuantity?.toString() || '0') === 0 ? 'critical' : 'warning',
+    }));
+
+    const materialAlerts = materials.map(m => ({
+      id: m.strId,
+      code: m.strCode,
+      name: m.strName,
+      type: 'material' as const,
+      currentStock: parseFloat(m.ingQuantity?.toString() || '0'),
+      minStock: parseFloat(m.ingMinStock?.toString() || '0'),
+      maxStock: parseFloat(m.ingMaxStock?.toString() || '0'),
+      unit: m.strUnitMeasure,
+      severity: parseFloat(m.ingQuantity?.toString() || '0') === 0 ? 'critical' : 'warning',
+    }));
+
+    return {
+      data: [...productAlerts, ...materialAlerts],
+      totalAlerts: productAlerts.length + materialAlerts.length,
+      criticalCount: [...productAlerts, ...materialAlerts].filter(a => a.severity === 'critical').length,
+      warningCount: [...productAlerts, ...materialAlerts].filter(a => a.severity === 'warning').length,
+    };
+  }
+
   async getCompositionTwo(tenantId: string) {
     return this.compositionTwoRepository.find();
   }

@@ -39,6 +39,8 @@ import { UsageCountersModule } from './usage-counters/usage-counters.module';
 import { TrainingSessionsModule } from './training-sessions/training-sessions.module';
 import { TrainingSession } from './training-sessions/entities/training-session.entity';
 import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
+import { OrdersModule } from './orders/orders.module';
+import { Order } from './orders/entities/order.entity';
 
 @Module({
   imports: [
@@ -53,7 +55,7 @@ import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession], 
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order], 
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -77,6 +79,7 @@ import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
     MarketplaceConfigModule,
     UsageCountersModule,
     TrainingSessionsModule,
+    OrdersModule,
   ],
 })
 export class AppModule implements NestModule {
