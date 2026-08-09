@@ -1,0 +1,63 @@
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { OrdersService } from './orders.service';
+import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
+import { OrderStatus } from './entities/order.entity';
+
+@Controller('orders')
+@UseGuards(JwtAuthGuard)
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  @Post()
+  create(@Body() createDto: CreateOrderDto, @GetTenantId() tenantId: string) {
+    return this.ordersService.create(createDto, tenantId);
+  }
+
+  @Get()
+  findAll(@GetTenantId() tenantId: string) {
+    return this.ordersService.findAll(tenantId);
+  }
+
+  @Get('stats')
+  getStats(@GetTenantId() tenantId: string) {
+    return this.ordersService.getStats(tenantId);
+  }
+
+  @Get('status/:status')
+  findByStatus(
+    @Param('status') status: OrderStatus,
+    @GetTenantId() tenantId: string,
+  ) {
+    return this.ordersService.findByStatus(tenantId, status);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    return this.ordersService.findOne(id, tenantId);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: Partial<CreateOrderDto>,
+    @GetTenantId() tenantId: string,
+  ) {
+    return this.ordersService.update(id, tenantId, updateDto);
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateOrderStatusDto,
+    @GetTenantId() tenantId: string,
+  ) {
+    return this.ordersService.updateStatus(id, tenantId, updateStatusDto.status);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    return this.ordersService.remove(id, tenantId);
+  }
+}
