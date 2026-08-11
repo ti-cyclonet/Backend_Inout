@@ -2,7 +2,9 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_GUARD } from '@nestjs/core';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
+import { RolesGuard } from './auth/guards/roles.guard';
 import { MaterialsModule } from './materials/material.module';
 import { MaterialsTModule } from './materials-t/material.t.module';
 import { TasksModule } from './tasks/tasks.module';
@@ -80,6 +82,12 @@ import { Order } from './orders/entities/order.entity';
     UsageCountersModule,
     TrainingSessionsModule,
     OrdersModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
   ],
 })
 export class AppModule implements NestModule {

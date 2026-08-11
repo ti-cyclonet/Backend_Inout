@@ -7,10 +7,11 @@ import { Product } from '../products/entities/product.entity';
 import { CompositionTwo } from '../products/entities/composition-two.entity';
 import { CompositionThree } from '../products/entities/composition-three.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
+import { Order } from '../orders/entities/order.entity';
 import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement]), UsageCountersModule],
+  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order]), UsageCountersModule],
   controllers: [SalesController],
   providers: [SalesService],
   exports: [SalesService],

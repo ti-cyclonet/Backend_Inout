@@ -7,6 +7,7 @@ import { OrderStatus } from './entities/order.entity';
 import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -17,6 +18,7 @@ export class OrdersController {
   @UseGuards(LimitEnforcementGuard)
   @CheckLimit('nPedidos')
   @UseInterceptors(UsageWarningInterceptor)
+  @Roles('admin', 'operator')
   create(@Body() createDto: CreateOrderDto, @GetTenantId() tenantId: string) {
     return this.ordersService.create(createDto, tenantId);
   }
@@ -45,6 +47,7 @@ export class OrdersController {
   }
 
   @Patch(':id')
+  @Roles('admin', 'operator')
   update(
     @Param('id') id: string,
     @Body() updateDto: Partial<CreateOrderDto>,
@@ -54,6 +57,7 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
+  @Roles('admin', 'operator')
   updateStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateOrderStatusDto,
@@ -63,6 +67,7 @@ export class OrdersController {
   }
 
   @Delete(':id')
+  @Roles('admin')
   remove(@Param('id') id: string, @GetTenantId() tenantId: string) {
     return this.ordersService.remove(id, tenantId);
   }
