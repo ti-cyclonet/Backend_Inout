@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('customers')
 @UseGuards(JwtAuthGuard)
@@ -16,6 +17,7 @@ export class CustomersController {
   @UseGuards(LimitEnforcementGuard)
   @CheckLimit('nClientes')
   @UseInterceptors(UsageWarningInterceptor)
+  @Roles('admin', 'operator')
   create(@Body() dto: CreateCustomerDto, @GetTenantId() tenantId: string) {
     return this.customersService.create(dto, tenantId);
   }
@@ -36,6 +38,7 @@ export class CustomersController {
   }
 
   @Delete(':id')
+  @Roles('admin')
   remove(@Param('id') id: string) {
     return this.customersService.remove(id);
   }

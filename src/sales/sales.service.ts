@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Sale } from './entities/sale.entity';
 import { Product } from '../products/entities/product.entity';
 import { CompositionTwo } from '../products/entities/composition-two.entity';
 import { CompositionThree } from '../products/entities/composition-three.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
+import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
 
 @Injectable()
@@ -21,6 +22,8 @@ export class SalesService {
     private compositionThreeRepository: Repository<CompositionThree>,
     @InjectRepository(InventoryMovement)
     private inventoryMovementRepository: Repository<InventoryMovement>,
+    @InjectRepository(Order)
+    private orderRepository: Repository<Order>,
     private dataSource: DataSource,
   ) {}
 
@@ -153,21 +156,47 @@ export class SalesService {
   }
 
   async getStats(tenantId: string) {
+    // Ventas directas
     const sales = await this.saleRepository.find({
       where: { strTenantId: tenantId },
     });
 
-    const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => {
+    const directSalesCount = sales.length;
+    const directSalesRevenue = sales.reduce((sum, sale) => {
       const saleTotal = sale.total ? parseFloat(sale.total.toString()) : (parseFloat(sale.fltQuantity.toString()) * parseFloat(sale.fltUnitPrice.toString()));
       return sum + saleTotal;
     }, 0);
-    const pendingSales = 0;
+
+    // Pedidos entregados/facturados (también cuentan como ingresos)
+    const completedOrders = await this.orderRepository.find({
+      where: {
+        tenantId,
+        status: In([OrderStatus.DELIVERED, OrderStatus.INVOICED]),
+      },
+    });
+
+    const ordersCount = completedOrders.length;
+    const ordersRevenue = completedOrders.reduce((sum, order) => {
+      return sum + (parseFloat(order.total?.toString() || '0'));
+    }, 0);
+
+    // Pedidos pendientes (confirmados + en producción + listos)
+    const pendingOrders = await this.orderRepository.count({
+      where: {
+        tenantId,
+        status: In([OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY]),
+      },
+    });
 
     return {
-      totalSales,
-      totalRevenue,
-      pendingSales
+      totalSales: directSalesCount + ordersCount,
+      totalRevenue: directSalesRevenue + ordersRevenue,
+      pendingSales: pendingOrders,
+      // Desglose
+      directSales: directSalesCount,
+      directRevenue: directSalesRevenue,
+      ordersSales: ordersCount,
+      ordersRevenue: ordersRevenue,
     };
   }
 }

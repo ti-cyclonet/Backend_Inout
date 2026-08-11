@@ -6,6 +6,7 @@ import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('sales')
 export class SalesController {
@@ -15,6 +16,7 @@ export class SalesController {
   @Post()
   @CheckLimit('nVentas')
   @UseInterceptors(UsageWarningInterceptor)
+  @Roles('admin', 'operator')
   create(@Body() createDto: CreateSaleDto, @GetTenantId() tenantId: string) {
     return this.salesService.create(createDto, tenantId);
   }
