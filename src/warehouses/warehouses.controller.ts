@@ -30,7 +30,7 @@ export class WarehousesController {
 
   // ═══════ LOCATIONS ═══════
   @Post('locations')
-  @Roles('admin')
+  @Roles('admin', 'operator')
   createLocation(@Body() data: any, @GetTenantId() tenantId: string) {
     return this.service.createLocation(data, tenantId);
   }
@@ -38,6 +38,12 @@ export class WarehousesController {
   @Get(':warehouseId/locations')
   findLocations(@Param('warehouseId') warehouseId: string, @GetTenantId() tenantId: string) {
     return this.service.findLocationsByWarehouse(warehouseId, tenantId);
+  }
+
+  @Delete('locations/:id')
+  @Roles('admin', 'operator')
+  removeLocation(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    return this.service.removeLocation(id, tenantId);
   }
 
   // ═══════ TRANSFERS ═══════

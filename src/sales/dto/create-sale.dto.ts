@@ -38,4 +38,8 @@ export class CreateSaleDto {
   @IsOptional()
   @IsNumber()
   total?: number;
+
+  @IsOptional()
+  @IsNumber()
+  discount?: number;
 }

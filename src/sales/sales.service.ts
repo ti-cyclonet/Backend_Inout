@@ -8,6 +8,7 @@ import { CompositionThree } from '../products/entities/composition-three.entity'
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { BusinessParamsService } from '../config/business-params.service';
 
 @Injectable()
 export class SalesService {
@@ -25,6 +26,7 @@ export class SalesService {
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
     private dataSource: DataSource,
+    private businessParamsService: BusinessParamsService,
   ) {}
 
   private async generateInvoiceCode(tenantId: string): Promise<string> {
@@ -83,6 +85,32 @@ export class SalesService {
         throw new BadRequestException('Stock insuficiente del producto');
       }
 
+      // Obtener parámetros de negocio del período activo
+      const params = await this.businessParamsService.getParams(tenantId);
+
+      // Calcular subtotal, IVA y total si no vienen del frontend
+      let subtotal = createDto.subtotal || parseFloat(fltQuantity.toString()) * parseFloat(fltUnitPrice.toString());
+      let tax = createDto.tax;
+      let total = createDto.total;
+
+      // Si el IVA no fue enviado pero está configurado, calcularlo
+      if ((tax === null || tax === undefined) && params.IVA_PORCENTAJE > 0) {
+        tax = subtotal * (params.IVA_PORCENTAJE / 100);
+        total = subtotal + tax;
+      } else if (!total) {
+        total = subtotal + (tax || 0);
+      }
+
+      // Validar descuento si viene en los items
+      if (createDto.discount && params.PORCENTAJE_DESCUENTO_MAX < 100) {
+        const discountPercent = (createDto.discount / subtotal) * 100;
+        if (discountPercent > params.PORCENTAJE_DESCUENTO_MAX) {
+          throw new BadRequestException(
+            `El descuento (${discountPercent.toFixed(1)}%) excede el máximo permitido (${params.PORCENTAJE_DESCUENTO_MAX}%)`
+          );
+        }
+      }
+
       const invoiceCode = await this.generateInvoiceCode(tenantId);
 
       const sale = this.saleRepository.create({
@@ -95,9 +123,9 @@ export class SalesService {
         customerName: customerName,
         strCustomerId: createDto.customerId || null,
         items: createDto.items,
-        subtotal: createDto.subtotal,
-        tax: createDto.tax,
-        total: createDto.total
+        subtotal: subtotal,
+        tax: tax || 0,
+        total: total
       });
       const savedSale = await queryRunner.manager.save(sale);
 
@@ -119,7 +147,22 @@ export class SalesService {
       });
 
       await queryRunner.commitTransaction();
-      return { message: 'Venta registrada exitosamente', sale: savedSale };
+
+      // Calcular puntos de fidelidad (no transaccional)
+      let loyaltyPoints = 0;
+      try {
+        loyaltyPoints = await this.businessParamsService.calculateLoyaltyPoints(tenantId, total);
+      } catch {}
+
+      return {
+        message: 'Venta registrada exitosamente',
+        sale: savedSale,
+        appliedParams: {
+          ivaPercent: params.IVA_PORCENTAJE,
+          taxApplied: tax || 0,
+          loyaltyPoints,
+        }
+      };
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;

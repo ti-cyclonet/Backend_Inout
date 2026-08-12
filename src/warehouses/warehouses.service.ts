@@ -52,6 +52,13 @@ export class WarehousesService {
     });
   }
 
+  async removeLocation(id: string, tenantId: string) {
+    const location = await this.locationRepo.findOne({ where: { id, tenantId } });
+    if (!location) throw new NotFoundException('Ubicación no encontrada');
+    await this.locationRepo.remove(location);
+    return { message: 'Ubicación eliminada' };
+  }
+
   // ═══════ TRANSFERS ═══════
   async createTransfer(data: any, tenantId: string) {
     // Validate material exists

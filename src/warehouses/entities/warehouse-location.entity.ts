@@ -28,6 +28,9 @@ export class WarehouseLocation {
   @Column({ type: 'varchar', length: 50, nullable: true })
   bin: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  capacity: string;
+
   @Column({ type: 'varchar', length: 50, default: 'active' })
   status: string;
 

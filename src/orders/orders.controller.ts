@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -9,11 +9,15 @@ import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { BusinessParamsService } from '../config/business-params.service';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly businessParamsService: BusinessParamsService,
+  ) {}
 
   @Post()
   @UseGuards(LimitEnforcementGuard)
@@ -71,5 +75,35 @@ export class OrdersController {
   @Roles('admin')
   remove(@Param('id') id: string, @GetTenantId() tenantId: string) {
     return this.ordersService.remove(id, tenantId);
+  }
+
+  /**
+   * GET /orders/:id/credit-info?daysLate=5
+   * Calcula interés de crédito y penalización por mora para un pedido.
+   */
+  @Get(':id/credit-info')
+  async getCreditInfo(
+    @Param('id') id: string,
+    @Query('daysLate') daysLate: string,
+    @GetTenantId() tenantId: string,
+  ) {
+    const order = await this.ordersService.findOne(id, tenantId);
+    const total = parseFloat(order.total?.toString() || '0');
+    const days = parseInt(daysLate || '0', 10);
+
+    const params = await this.businessParamsService.getParams(tenantId);
+    const creditInterest = await this.businessParamsService.calculateCreditInterest(tenantId, total, days);
+    const latePenalty = await this.businessParamsService.calculateLatePenalty(tenantId, total, days);
+
+    return {
+      orderId: id,
+      orderTotal: total,
+      daysLate: days,
+      creditInterestRate: params.INTERES_CREDITO,
+      creditInterest: Math.round(creditInterest),
+      penaltyRate: params.PENALIZACION_MORA,
+      latePenalty: Math.round(latePenalty),
+      totalWithCharges: Math.round(total + creditInterest + latePenalty),
+    };
   }
 }
