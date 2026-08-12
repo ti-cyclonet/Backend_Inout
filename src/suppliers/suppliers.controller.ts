@@ -2,6 +2,7 @@ import { Controller, Get, Post, Delete, Param, Body, UseGuards, UseInterceptors 
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
@@ -9,7 +10,7 @@ import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-wa
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('suppliers')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class SuppliersController {
   constructor(private readonly suppliersService: SuppliersService) {}
 

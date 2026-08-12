@@ -27,6 +27,9 @@ export class Product {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   ingQuantity: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  ingReservedStock: number;
+
   @Column({ type: 'varchar', length: 50 })
   strMeasurementUnit: string;
 

@@ -2,9 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_GUARD } from '@nestjs/core';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
-import { RolesGuard } from './auth/guards/roles.guard';
 import { MaterialsModule } from './materials/material.module';
 import { MaterialsTModule } from './materials-t/material.t.module';
 import { TasksModule } from './tasks/tasks.module';
@@ -42,7 +40,12 @@ import { TrainingSessionsModule } from './training-sessions/training-sessions.mo
 import { TrainingSession } from './training-sessions/entities/training-session.entity';
 import { UsageCounter } from './usage-counters/entities/usage-counter.entity';
 import { OrdersModule } from './orders/orders.module';
+import { WarehousesModule } from './warehouses/warehouses.module';
 import { Order } from './orders/entities/order.entity';
+import { Warehouse } from './warehouses/entities/warehouse.entity';
+import { WarehouseLocation } from './warehouses/entities/warehouse-location.entity';
+import { StockTransfer } from './warehouses/entities/stock-transfer.entity';
+import { PhysicalCount } from './warehouses/entities/physical-count.entity';
 
 @Module({
   imports: [
@@ -57,7 +60,7 @@ import { Order } from './orders/entities/order.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order], 
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount], 
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -82,12 +85,7 @@ import { Order } from './orders/entities/order.entity';
     UsageCountersModule,
     TrainingSessionsModule,
     OrdersModule,
-  ],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: RolesGuard,
-    },
+    WarehousesModule,
   ],
 })
 export class AppModule implements NestModule {
