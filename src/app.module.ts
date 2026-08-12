@@ -32,6 +32,7 @@ import { ProductProduction } from './products/entities/product-production.entity
 import { Sale } from './sales/entities/sale.entity';
 import { MarketplaceConfig } from './marketplace-config/entities/marketplace-config.entity';
 import { AuthModule } from './auth/auth.module';
+import { BusinessParamsModule } from './config/business-params.module';
 import { InventoryMovementsModule } from './inventory-movements/inventory-movements.module';
 import { CustomersModule } from './customers/customers.module';
 import { Customer } from './customers/entities/customer.entity';
@@ -68,6 +69,7 @@ import { PhysicalCount } from './warehouses/entities/physical-count.entity';
       },
     }),
     AuthModule,
+    BusinessParamsModule,
     MaterialsModule,
     MaterialsTModule, 
     TasksModule,

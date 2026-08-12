@@ -11,6 +11,7 @@ import { MaterialImage } from '../materials/entities/material-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
+import { BusinessParamsService } from '../config/business-params.service';
 
 @Injectable()
 export class ProductsService {
@@ -32,6 +33,7 @@ export class ProductsService {
     private dataSource: DataSource,
     private readonly cloudinaryService: CloudinaryService,
     private readonly limitEnforcementService: LimitEnforcementService,
+    private readonly businessParamsService: BusinessParamsService,
   ) {}
 
   async create(createDto: CreateProductDto, tenantId: string): Promise<Product> {
@@ -43,8 +45,20 @@ export class ProductsService {
       const code = await this.generateProductCode(tenantId);
       const { composition, compositionTwo, compositionThree, images, categoryId, ...productData } = createDto;
       
+      // Si el producto tiene costo y no tiene precio, sugerir precio con margen de ganancia
+      let finalPrice = productData.fltPrice;
+      const productCost = (createDto as any).fltCost || 0;
+      if (productCost > 0 && (!finalPrice || finalPrice === 0)) {
+        try {
+          finalPrice = await this.businessParamsService.calculateSuggestedPrice(tenantId, productCost);
+        } catch {
+          finalPrice = productCost; // fallback: precio = costo
+        }
+      }
+
       const product = this.productRepository.create({
         ...productData,
+        fltPrice: finalPrice || productData.fltPrice,
         strCode: code,
         strTenantId: tenantId,
         strName: productData.strName.toUpperCase(),
@@ -589,7 +603,7 @@ export class ProductsService {
       .where('product.strTenantId = :tenantId', { tenantId })
       .andWhere('product.ingStockMin IS NOT NULL')
       .andWhere('product.ingStockMin > 0')
-      .andWhere('product.ingQuantity <= product.ingStockMin')
+      .andWhere('product.ingQuantity < product.ingStockMin')
       .getMany();
 
     // Get materials with low stock
@@ -598,7 +612,7 @@ export class ProductsService {
       .where('material.strTenantId = :tenantId', { tenantId })
       .andWhere('material.ingMinStock IS NOT NULL')
       .andWhere('material.ingMinStock > 0')
-      .andWhere('material.ingQuantity <= material.ingMinStock')
+      .andWhere('material.ingQuantity < material.ingMinStock')
       .getMany();
 
     const productAlerts = products.map(p => ({

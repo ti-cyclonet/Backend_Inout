@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Sale } from './entities/sale.entity';
 import { Customer } from '../customers/entities/customer.entity';
+import { BusinessParamsService } from '../config/business-params.service';
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -15,6 +16,7 @@ export class InvoicePdfService {
     private saleRepository: Repository<Sale>,
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
+    private businessParamsService: BusinessParamsService,
   ) {}
 
   async generateInvoicePdf(saleId: string, tenantId: string): Promise<Buffer> {
@@ -47,12 +49,22 @@ export class InvoicePdfService {
   }
 
   private async getBusinessData(tenantId: string): Promise<any> {
+    // First try from Authoriza contracts
+    let data: any = {
+      businessName: 'Mi Negocio',
+      nit: '',
+      address: '',
+      phone: '',
+      email: '',
+      codePrefix: 'ABC',
+    };
+
     try {
       const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
       const response = await fetch(`${authorizaUrl}/api/contracts/tenant/${tenantId}`);
       if (response.ok) {
         const contract = await response.json();
-        return {
+        data = {
           businessName: contract.businessName || contract.name || 'Mi Negocio',
           nit: contract.nit || contract.documentNumber || '',
           address: contract.address || '',
@@ -62,16 +74,20 @@ export class InvoicePdfService {
         };
       }
     } catch (error) {
-      console.error('Error obteniendo datos del negocio:', error);
+      console.error('Error obteniendo datos del contrato:', error);
     }
-    return {
-      businessName: 'Mi Negocio',
-      nit: '',
-      address: '',
-      phone: '',
-      email: '',
-      codePrefix: 'ABC',
-    };
+
+    // Override with configured parameters if available
+    try {
+      const params = await this.businessParamsService.getParams(tenantId);
+      if (params['NEGOCIO_NOMBRE']) data.businessName = params['NEGOCIO_NOMBRE'] as any;
+      if (params['NEGOCIO_NIT']) data.nit = params['NEGOCIO_NIT'] as any;
+      if (params['NEGOCIO_DIRECCION']) data.address = params['NEGOCIO_DIRECCION'] as any;
+      if (params['NEGOCIO_TELEFONO']) data.phone = params['NEGOCIO_TELEFONO'] as any;
+      if (params['NEGOCIO_EMAIL']) data.email = params['NEGOCIO_EMAIL'] as any;
+    } catch {}
+
+    return data;
   }
 
   private parseItems(sale: Sale): any[] {
