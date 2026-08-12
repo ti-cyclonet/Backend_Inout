@@ -2,10 +2,11 @@ import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/
 import { PurchasesService } from './purchases.service';
 import { CreatePurchaseRecordDto, CreateBulkPurchaseDto } from './dto/create-purchase-record.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('purchases')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PurchasesController {
   constructor(private readonly purchasesService: PurchasesService) {}
 

@@ -20,7 +20,13 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || !user.role) {
+    // If user is not yet authenticated (JwtAuthGuard hasn't run yet or no auth),
+    // let JwtAuthGuard handle the rejection
+    if (!user) {
+      return true;
+    }
+
+    if (!user.role) {
       throw new ForbiddenException('No tienes un rol asignado para acceder a este recurso.');
     }
 

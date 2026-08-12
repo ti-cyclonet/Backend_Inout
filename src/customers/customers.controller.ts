@@ -3,13 +3,14 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('customers')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 

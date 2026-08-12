@@ -130,6 +130,40 @@ export class OrdersService {
           'El pedido debe tener al menos un item para ser confirmado',
         );
       }
+
+      // Reservar stock de productos al confirmar
+      for (const item of order.items) {
+        if (item.productId) {
+          await this.dataSource.query(
+            `UPDATE manufacturing.products SET "ingReservedStock" = COALESCE("ingReservedStock", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
+            [item.quantity, item.productId, tenantId]
+          );
+        }
+      }
+    }
+
+    // Liberar stock reservado si se cancela un pedido confirmado
+    if (newStatus === OrderStatus.CANCELLED && order.status !== OrderStatus.DRAFT) {
+      for (const item of (order.items || [])) {
+        if (item.productId) {
+          await this.dataSource.query(
+            `UPDATE manufacturing.products SET "ingReservedStock" = GREATEST(0, COALESCE("ingReservedStock", 0) - $1) WHERE "strId" = $2 AND "strTenantId" = $3`,
+            [item.quantity, item.productId, tenantId]
+          );
+        }
+      }
+    }
+
+    // Liberar reserva cuando se entrega (ya se descontó del stock real)
+    if (newStatus === OrderStatus.DELIVERED) {
+      for (const item of (order.items || [])) {
+        if (item.productId) {
+          await this.dataSource.query(
+            `UPDATE manufacturing.products SET "ingReservedStock" = GREATEST(0, COALESCE("ingReservedStock", 0) - $1) WHERE "strId" = $2 AND "strTenantId" = $3`,
+            [item.quantity, item.productId, tenantId]
+          );
+        }
+      }
     }
 
     order.status = newStatus;

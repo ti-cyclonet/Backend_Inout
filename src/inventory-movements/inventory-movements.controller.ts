@@ -1,11 +1,23 @@
-import { Controller, Get, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { InventoryMovementsService } from './inventory-movements.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inventory-movements')
 export class InventoryMovementsController {
   constructor(private readonly service: InventoryMovementsService) {}
+
+  @Post()
+  @Roles('admin', 'operator')
+  create(@Body() data: any, @Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    return this.service.createAndUpdateStock({
+      ...data,
+      strTenantId: tenantId,
+    });
+  }
 
   @Get('material/:materialId')
   findByMaterial(
