@@ -23,6 +23,8 @@ export class BusinessParamsService {
   // Valores por defecto cuando no hay parámetro configurado
   private readonly defaults: Record<string, number> = {
     IVA_PORCENTAJE: 0,
+    IVA_PORCENTAJE_REDUCIDO: 0,
+    INC_PORCENTAJE: 0,
     PORCENTAJE_GANANCIA: 0,
     PORCENTAJE_DESCUENTO_MAX: 100,
     PENALIZACION_MORA: 0,
@@ -94,11 +96,29 @@ export class BusinessParamsService {
   }
 
   /**
-   * Calcula el IVA sobre un monto.
+   * Calcula el impuesto sobre un monto.
+   * Si INC está configurado, usa INC (restaurantes). Si no, usa IVA.
+   * Retorna { tax, taxType, taxPercent }
    */
   async calculateTax(tenantId: string, subtotal: number): Promise<number> {
-    const ivaPercent = await this.getParam(tenantId, 'IVA_PORCENTAJE');
-    return subtotal * (ivaPercent / 100);
+    const params = await this.getParams(tenantId);
+    // INC takes precedence for restaurants/food services
+    const incPercent = Number(params['INC_PORCENTAJE'] || 0);
+    const ivaPercent = Number(params['IVA_PORCENTAJE'] || 0);
+    const effectiveRate = incPercent > 0 ? incPercent : ivaPercent;
+    return subtotal * (effectiveRate / 100);
+  }
+
+  /**
+   * Returns the effective tax info (type + percent).
+   */
+  async getTaxInfo(tenantId: string): Promise<{ taxType: 'IVA' | 'INC' | 'NONE'; percent: number }> {
+    const params = await this.getParams(tenantId);
+    const inc = Number(params['INC_PORCENTAJE'] || 0);
+    const iva = Number(params['IVA_PORCENTAJE'] || 0);
+    if (inc > 0) return { taxType: 'INC', percent: inc };
+    if (iva > 0) return { taxType: 'IVA', percent: iva };
+    return { taxType: 'NONE', percent: 0 };
   }
 
   /**

@@ -58,10 +58,15 @@ export class MarketplaceConfigService {
 
   async updateSlug(tenantId: string, newSlug: string): Promise<MarketplaceConfig> {
     const normalized = this.normalizeSlug(newSlug);
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    let config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
     
     if (!config) {
-      throw new Error('Configuración de marketplace no encontrada');
+      // Create config if it doesn't exist
+      config = this.marketplaceConfigRepository.create({
+        tenantId,
+        selectedProductIds: [],
+        slug: normalized,
+      });
     }
 
     await this.validateSlug(normalized, config.id);

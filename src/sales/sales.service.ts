@@ -88,14 +88,17 @@ export class SalesService {
       // Obtener parámetros de negocio del período activo
       const params = await this.businessParamsService.getParams(tenantId);
 
-      // Calcular subtotal, IVA y total si no vienen del frontend
+      // Calcular subtotal, IVA/INC y total si no vienen del frontend
       let subtotal = createDto.subtotal || parseFloat(fltQuantity.toString()) * parseFloat(fltUnitPrice.toString());
       let tax = createDto.tax;
       let total = createDto.total;
 
-      // Si el IVA no fue enviado pero está configurado, calcularlo
-      if ((tax === null || tax === undefined) && params.IVA_PORCENTAJE > 0) {
-        tax = subtotal * (params.IVA_PORCENTAJE / 100);
+      // Si el impuesto no fue enviado pero está configurado, calcularlo
+      if ((tax === null || tax === undefined) && (params.IVA_PORCENTAJE > 0 || params.INC_PORCENTAJE > 0)) {
+        const incRate = Number(params.INC_PORCENTAJE || 0);
+        const ivaRate = Number(params.IVA_PORCENTAJE || 0);
+        const effectiveRate = incRate > 0 ? incRate : ivaRate;
+        tax = subtotal * (effectiveRate / 100);
         total = subtotal + tax;
       } else if (!total) {
         total = subtotal + (tax || 0);
