@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
 
 @Injectable()
 export class OrdersService {
@@ -71,6 +72,48 @@ export class OrdersService {
 
     const savedOrder = await this.orderRepository.save(order);
     return { message: 'Pedido creado exitosamente', order: savedOrder };
+  }
+
+  async createFromMarketplace(createDto: CreateMarketplaceOrderDto) {
+    const { tenantId } = createDto;
+    const orderCode = await this.generateOrderCode(tenantId);
+
+    const order = this.orderRepository.create({
+      tenantId,
+      orderCode,
+      status: OrderStatus.CONFIRMED,
+      customerId: null,
+      customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
+      items: createDto.items,
+      notes: createDto.notes || null,
+      subtotal: createDto.subtotal || 0,
+      tax: createDto.tax || 0,
+      discount: 0,
+      total: createDto.total || 0,
+    });
+
+    const savedOrder = await this.orderRepository.save(order);
+
+    // Intentar obtener el número de WhatsApp del marketplace config
+    let whatsapp: string | null = null;
+    try {
+      const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
+      const response = await fetch(`${authorizaUrl}/api/contracts/tenant/${tenantId}`);
+      if (response.ok) {
+        const contract = await response.json();
+        if (contract.marketplaceConfig?.whatsapp) {
+          whatsapp = contract.marketplaceConfig.whatsapp;
+        }
+      }
+    } catch (error) {
+      console.error('Error obteniendo config de marketplace:', error);
+    }
+
+    return {
+      message: 'Pedido creado exitosamente desde marketplace',
+      order: savedOrder,
+      ...(whatsapp && { whatsapp }),
+    };
   }
 
   async findAll(tenantId: string) {
