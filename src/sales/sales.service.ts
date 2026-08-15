@@ -245,4 +245,56 @@ export class SalesService {
       ordersRevenue: ordersRevenue,
     };
   }
+
+  async getChartData(tenantId: string) {
+    const sales = await this.saleRepository.find({
+      where: { strTenantId: tenantId },
+      order: { dtmCreationDate: 'ASC' },
+      relations: [],
+    });
+
+    // Agrupar por día
+    const dailyData: Record<string, number> = {};
+    const productTotals: Record<string, number> = {};
+
+    for (const sale of sales) {
+      const total = sale.total 
+        ? parseFloat(sale.total.toString()) 
+        : parseFloat(sale.fltQuantity.toString()) * parseFloat(sale.fltUnitPrice.toString());
+
+      // Agrupar por fecha (formato ISO sin hora)
+      const dateKey = sale.dtmCreationDate 
+        ? new Date(sale.dtmCreationDate).toISOString().split('T')[0]
+        : sale.dtmDate?.toString()?.split('T')[0] || new Date().toISOString().split('T')[0];
+      
+      dailyData[dateKey] = (dailyData[dateKey] || 0) + total;
+
+      // Top productos
+      const productId = sale.strProductId || 'unknown';
+      productTotals[productId] = (productTotals[productId] || 0) + total;
+    }
+
+    // Obtener nombres de productos para el top 5
+    const topProductIds = Object.entries(productTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([id]) => id);
+
+    const topProducts = await Promise.all(
+      topProductIds.map(async (id) => {
+        const product = await this.productRepository.findOne({ where: { strId: id } });
+        return {
+          id,
+          name: product?.strName || 'Producto eliminado',
+          total: productTotals[id],
+        };
+      })
+    );
+
+    return {
+      daily: Object.entries(dailyData).map(([date, total]) => ({ date, total })),
+      topProducts,
+      totalSales: sales.length,
+    };
+  }
 }

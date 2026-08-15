@@ -40,6 +40,12 @@ export class SalesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('chart-data')
+  getChartData(@GetTenantId() tenantId: string) {
+    return this.salesService.getChartData(tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get(':id/invoice-pdf')
   async getInvoicePdf(
     @Param('id') id: string,
