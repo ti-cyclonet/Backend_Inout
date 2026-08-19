@@ -32,6 +32,9 @@ export class MarketplaceConfig {
   @Column({ type: 'json', nullable: true })
   schedule: { day: string; open: string; close: string; active: boolean }[];
 
+  @Column({ type: 'varchar', length: 10, default: 'grid' })
+  displayMode: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
