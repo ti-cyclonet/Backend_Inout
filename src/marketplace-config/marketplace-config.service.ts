@@ -18,6 +18,10 @@ export class MarketplaceConfigService {
 
     if (config) {
       config.selectedProductIds = dto.selectedProductIds;
+      // Update displayMode if provided
+      if (dto.displayMode) {
+        config.displayMode = dto.displayMode;
+      }
       // Update slug if provided
       if ((dto as any).slug) {
         await this.validateSlug((dto as any).slug, config.id);
@@ -28,6 +32,7 @@ export class MarketplaceConfigService {
       config = this.marketplaceConfigRepository.create({
         tenantId: dto.tenantId,
         selectedProductIds: dto.selectedProductIds,
+        displayMode: dto.displayMode || 'grid',
         slug,
       });
     }
