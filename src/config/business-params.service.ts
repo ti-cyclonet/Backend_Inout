@@ -176,4 +176,34 @@ export class BusinessParamsService {
   async getQuoteValidityDays(tenantId: string): Promise<number> {
     return this.getParam(tenantId, 'DIAS_VIGENCIA_COTIZACION');
   }
+
+  /**
+   * Calcula el total de costos indirectos mensuales (overhead).
+   * Suma: arriendo + agua + energía + gas + internet + nómina.
+   * Estos costos se distribuyen entre las unidades producidas en el mes.
+   */
+  async getMonthlyOverhead(tenantId: string): Promise<{
+    total: number;
+    breakdown: {
+      arriendo: number;
+      agua: number;
+      energia: number;
+      gas: number;
+      internet: number;
+      nomina: number;
+    };
+  }> {
+    const params = await this.getParams(tenantId);
+    const breakdown = {
+      arriendo: Number(params['COSTO_ARRIENDO'] || 0),
+      agua: Number(params['COSTO_AGUA'] || 0),
+      energia: Number(params['COSTO_ENERGIA'] || 0),
+      gas: Number(params['COSTO_GAS'] || 0),
+      internet: Number(params['COSTO_INTERNET'] || 0),
+      nomina: Number(params['COSTO_NOMINA'] || 0),
+    };
+    const total = breakdown.arriendo + breakdown.agua + breakdown.energia
+      + breakdown.gas + breakdown.internet + breakdown.nomina;
+    return { total, breakdown };
+  }
 }
