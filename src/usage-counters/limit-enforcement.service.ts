@@ -61,7 +61,7 @@ export class LimitEnforcementService {
     }
 
     try {
-      const url = `${this.authorizaApiUrl}/api/contracts/tenant/${tenantId}/limits`;
+      const url = `${this.authorizaApiUrl}/api/contracts/tenant/${tenantId}/limits?application=Inout`;
       const response = await firstValueFrom(
         this.httpService.get<TenantLimitsResponse>(url),
       );

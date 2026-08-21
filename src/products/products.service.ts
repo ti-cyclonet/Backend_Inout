@@ -300,12 +300,41 @@ export class ProductsService {
       // Generar código de lote automáticamente
       const batchReference = await this.generateBatchCode(tenantId);
 
-      // Calcular costo unitario basado en ingredientes
+      // Calcular costo unitario basado en ingredientes (costo directo)
       const ingredients = await this.getIngredients(productId);
-      let unitCost = 0;
+      let directCost = 0;
       ingredients.forEach(ing => {
-        unitCost += ing.quantity * ing.unitPrice;
+        directCost += ing.quantity * ing.unitPrice;
       });
+
+      // Calcular costo indirecto por unidad (distribución de overhead mensual)
+      let indirectCostPerUnit = 0;
+      let overheadBreakdown = null;
+      try {
+        const overhead = await this.businessParamsService.getMonthlyOverhead(tenantId);
+        if (overhead.total > 0) {
+          // Obtener total de unidades producidas este mes
+          const now = new Date();
+          const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          const result = await this.dataSource.query(
+            `SELECT COALESCE(SUM("fltQuantity"), 0) as total
+             FROM manufacturing.product_productions
+             WHERE "strTenantId" = $1 AND "dtmDate" >= $2`,
+            [tenantId, firstDayOfMonth.toISOString()],
+          );
+          const previousMonthlyUnits = parseFloat(result[0]?.total || '0');
+          const totalMonthlyUnits = previousMonthlyUnits + parseFloat(quantity);
+
+          if (totalMonthlyUnits > 0) {
+            indirectCostPerUnit = overhead.total / totalMonthlyUnits;
+          }
+          overheadBreakdown = overhead.breakdown;
+        }
+      } catch (err) {
+        // Si falla obtener overhead, continuar solo con costo directo
+      }
+
+      const unitCost = directCost + indirectCostPerUnit;
 
       // Registrar producción con el costo de fabricación
       const production = this.productionRepository.create({
@@ -397,7 +426,16 @@ export class ProductsService {
       }
 
       await queryRunner.commitTransaction();
-      return { message: 'Producción registrada exitosamente', product };
+      return {
+        message: 'Producción registrada exitosamente',
+        product,
+        costBreakdown: {
+          directCost: Math.round(directCost * 100) / 100,
+          indirectCostPerUnit: Math.round(indirectCostPerUnit * 100) / 100,
+          totalUnitCost: Math.round(unitCost * 100) / 100,
+          overhead: overheadBreakdown,
+        },
+      };
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
