@@ -24,40 +24,11 @@ export class CustomersService {
 
   async create(dto: CreateCustomerDto, tenantId: string): Promise<Customer> {
     try {
-      // 1. Create potential user in Authoriza
-      const potentialUserData = {
-        email: dto.email,
-        sourceApplication: 'InOut',
-        documentType: dto.documentType,
-        documentNumber: dto.documentNumber,
-        name: dto.personType === 'J' ? dto.businessName : 
-              [dto.firstName, dto.secondName, dto.firstSurname, dto.secondSurname]
-                .filter(Boolean).join(' '),
-      };
-
-      let potentialUserId = null;
-      
-      try {
-        const fullUrl = `${this.authorizaApiUrl}/api/potential-users`;
-        console.log('Full Authoriza URL:', this.authorizaApiUrl);
-        console.log('Attempting to create potential user in Authoriza:', fullUrl);
-        console.log('Payload:', potentialUserData);
-        
-        const response = await firstValueFrom(
-          this.httpService.post(fullUrl, potentialUserData)
-        );
-        potentialUserId = response.data.id;
-        console.log('Successfully created potential user with ID:', potentialUserId);
-      } catch (authorizaError) {
-        console.error('Failed to create potential user in Authoriza:', authorizaError.response?.data || authorizaError.message);
-        // Continue without potential user ID
-      }
-
-      // 2. Create customer in InOut
+      // Generate customer code
       const customerCode = await this.generateCustomerCode(tenantId);
       
       const customer = this.customerRepository.create({
-        potentialUserId,
+        potentialUserId: null,
         tenantId,
         customerCode,
         businessName: dto.businessName,
