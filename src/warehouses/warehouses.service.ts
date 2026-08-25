@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { Warehouse } from './entities/warehouse.entity';
 import { WarehouseLocation } from './entities/warehouse-location.entity';
 import { StockTransfer } from './entities/stock-transfer.entity';
@@ -9,7 +9,9 @@ import { Material } from '../materials/entities/material.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 
 @Injectable()
-export class WarehousesService {
+export class WarehousesService implements OnModuleInit {
+  private readonly logger = new Logger('WarehousesService');
+
   constructor(
     @InjectRepository(Warehouse) private warehouseRepo: Repository<Warehouse>,
     @InjectRepository(WarehouseLocation) private locationRepo: Repository<WarehouseLocation>,
@@ -18,6 +20,31 @@ export class WarehousesService {
     @InjectRepository(Material) private materialRepo: Repository<Material>,
     @InjectRepository(InventoryMovement) private movementRepo: Repository<InventoryMovement>,
   ) {}
+
+  /**
+   * Backfill: al iniciar, genera locationCode para ubicaciones existentes que
+   * aún no lo tengan (creadas antes de introducir el código corto).
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const pending = await this.locationRepo.find({ where: { locationCode: IsNull() } });
+      if (pending.length === 0) return;
+
+      let updated = 0;
+      for (const loc of pending) {
+        loc.locationCode = await this.buildLocationCode(loc.tenantId, {
+          zoneCode: loc.zoneCode,
+          shelf: loc.shelf,
+          bin: loc.bin,
+        });
+        await this.locationRepo.save(loc);
+        updated++;
+      }
+      this.logger.log(`Backfill de locationCode: ${updated} ubicación(es) actualizada(s).`);
+    } catch (err) {
+      this.logger.warn(`No se pudo ejecutar el backfill de locationCode: ${(err as Error).message}`);
+    }
+  }
 
   // ═══════ WAREHOUSES ═══════
   async createWarehouse(data: any, tenantId: string) {
@@ -42,8 +69,38 @@ export class WarehousesService {
 
   // ═══════ LOCATIONS ═══════
   async createLocation(data: any, tenantId: string) {
-    const location = this.locationRepo.create({ ...data, tenantId });
+    const code = await this.buildLocationCode(tenantId, {
+      zoneCode: data.zoneCode,
+      shelf: data.shelf,
+      bin: data.bin,
+    });
+    const location = this.locationRepo.create({ ...data, tenantId, locationCode: code });
     return this.locationRepo.save(location);
+  }
+
+  /**
+   * Genera un código corto único por tenant para una ubicación.
+   * Base: "{zoneCode|shelf}-{bin}" en mayúsculas (ej. "C-01", "Z15-10").
+   * Si no hay datos suficientes, usa "UBI". Garantiza unicidad añadiendo un
+   * sufijo incremental si el código base ya existe.
+   */
+  private async buildLocationCode(
+    tenantId: string,
+    parts: { zoneCode?: string; shelf?: string; bin?: string },
+  ): Promise<string> {
+    const clean = (s?: string) => (s || '').toString().trim().toUpperCase().replace(/\s+/g, '');
+    const prefix = clean(parts.zoneCode) || clean(parts.shelf) || 'UBI';
+    const suffix = clean(parts.bin);
+    let base = suffix ? `${prefix}-${suffix}` : prefix;
+    base = base.substring(0, 55);
+
+    // Garantizar unicidad por tenant
+    let candidate = base;
+    let n = 1;
+    while (await this.locationRepo.findOne({ where: { tenantId, locationCode: candidate } })) {
+      candidate = `${base}-${n++}`;
+    }
+    return candidate;
   }
 
   /**
@@ -73,15 +130,22 @@ export class WarehousesService {
     const shelf = data.shelf || null;
     const aisle = data.aisle || null;
 
-    const locations = positions.map((pos) => {
+    const locations: WarehouseLocation[] = [];
+    for (const pos of positions) {
       // Nombre legible: "ZONA 15 · Estante C · Pos 10"
       const parts = [zone];
       if (shelf) parts.push(`Estante ${shelf}`);
       parts.push(`Pos ${pos}`);
-      return this.locationRepo.create({
+      const code = await this.buildLocationCode(tenantId, {
+        zoneCode: data.zoneCode,
+        shelf,
+        bin: pos,
+      });
+      locations.push(this.locationRepo.create({
         tenantId,
         warehouseId: data.warehouseId,
         name: parts.join(' · '),
+        locationCode: code,
         aisle,
         shelf,
         bin: pos,
@@ -90,8 +154,8 @@ export class WarehousesService {
         zoneCode: data.zoneCode || null,
         description: data.description || null,
         status: 'active',
-      });
-    });
+      }));
+    }
 
     const saved = await this.locationRepo.save(locations);
     return {
