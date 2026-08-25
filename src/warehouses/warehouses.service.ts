@@ -46,6 +46,62 @@ export class WarehousesService {
     return this.locationRepo.save(location);
   }
 
+  /**
+   * Crea una ZONA que agrupa varias posiciones (bins) en un mismo estante.
+   * Recibe los datos comunes de la zona + una lista de posiciones, y genera
+   * una ubicación por cada posición, todas compartiendo zone/zoneCode.
+   *
+   * body: {
+   *   warehouseId, zone, zoneCode?, description?, aisle?, shelf?, capacity?,
+   *   positions: string[]   // ej. ["10","11","12","17","18","19"]
+   * }
+   */
+  async createLocationsBatch(data: any, tenantId: string) {
+    if (!data.warehouseId) throw new BadRequestException('warehouseId es requerido');
+
+    const positions: string[] = Array.isArray(data.positions)
+      ? data.positions.map((p: any) => String(p).trim()).filter((p: string) => p.length > 0)
+      : [];
+
+    if (positions.length === 0) {
+      throw new BadRequestException('Debe indicar al menos una posición para la zona');
+    }
+
+    const zone = (data.zone || '').trim();
+    if (!zone) throw new BadRequestException('El nombre de la zona es requerido');
+
+    const shelf = data.shelf || null;
+    const aisle = data.aisle || null;
+
+    const locations = positions.map((pos) => {
+      // Nombre legible: "ZONA 15 · Estante C · Pos 10"
+      const parts = [zone];
+      if (shelf) parts.push(`Estante ${shelf}`);
+      parts.push(`Pos ${pos}`);
+      return this.locationRepo.create({
+        tenantId,
+        warehouseId: data.warehouseId,
+        name: parts.join(' · '),
+        aisle,
+        shelf,
+        bin: pos,
+        capacity: data.capacity || null,
+        zone,
+        zoneCode: data.zoneCode || null,
+        description: data.description || null,
+        status: 'active',
+      });
+    });
+
+    const saved = await this.locationRepo.save(locations);
+    return {
+      message: `Zona "${zone}" creada con ${saved.length} posición(es)`,
+      zone,
+      count: saved.length,
+      locations: saved,
+    };
+  }
+
   async findLocationsByWarehouse(warehouseId: string, tenantId: string) {
     return this.locationRepo.find({
       where: { warehouseId, tenantId, status: 'active' },

@@ -35,6 +35,13 @@ export class WarehousesController {
     return this.service.createLocation(data, tenantId);
   }
 
+  // Crear una zona que agrupa varias posiciones en un estante
+  @Post('locations/batch')
+  @Roles('admin', 'operator')
+  createLocationsBatch(@Body() data: any, @GetTenantId() tenantId: string) {
+    return this.service.createLocationsBatch(data, tenantId);
+  }
+
   @Get(':warehouseId/locations')
   findLocations(@Param('warehouseId') warehouseId: string, @GetTenantId() tenantId: string) {
     return this.service.findLocationsByWarehouse(warehouseId, tenantId);
