@@ -28,19 +28,22 @@ async function bootstrap() {
     logger: ['log', 'error', 'warn'],
   });
 
-  // CORS: habilitar para todos los entornos
-  app.enableCors({
-    origin: [
-      'http://localhost:4200',
-      'http://localhost:4201',
-      'https://app.cyclonet.com.co',
-      'https://cyclonet.com.co',
-      'https://www.cyclonet.com.co',
-    ],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
-  });
+  // CORS: en producción detrás de nginx se desactiva (DISABLE_CORS=true) para que
+  // sea nginx quien gestione los headers CORS y evitar cabeceras duplicadas.
+  if (process.env.DISABLE_CORS !== 'true') {
+    app.enableCors({
+      origin: [
+        'http://localhost:4200',
+        'http://localhost:4201',
+        'https://app.cyclonet.com.co',
+        'https://cyclonet.com.co',
+        'https://www.cyclonet.com.co',
+      ],
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+    });
+  }
 
   // Aumentar límite de payload para imágenes
   app.use(express.json({ limit: '10mb' }));

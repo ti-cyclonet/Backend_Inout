@@ -509,6 +509,27 @@ export class MaterialsService {
             continue;
           }
 
+          // Resolver la ubicación por su código corto (locationCode).
+          // Si se indica un código en la columna "Ubicación", debe existir para este tenant.
+          const rawLocation = (row['Ubicación'] || '').toString().trim();
+          let resolvedLocationName = '';
+          if (rawLocation) {
+            const locRows = await this.dataSource.query(
+              `SELECT name FROM manufacturing.warehouse_locations
+               WHERE "tenantId" = $1 AND UPPER("locationCode") = UPPER($2) AND status = 'active'
+               LIMIT 1`,
+              [tenantId, rawLocation]
+            );
+            if (!locRows || locRows.length === 0) {
+              results.errors.push({
+                row: materialName,
+                error: `Ubicación con código "${rawLocation}" no existe. Usa el código de una ubicación registrada (ej. C-01).`
+              });
+              continue;
+            }
+            resolvedLocationName = locRows[0].name;
+          }
+
           const materialDto: CreateMaterialDto = {
             strName: materialName,
             strDescription: row['Descripción'] || '',
@@ -518,7 +539,7 @@ export class MaterialsService {
             ingMaxStock: parseInt(row['Stock Máximo*']) || 0,
             ingMinStock: parseInt(row['Stock Mínimo*']) || 0,
             ingQuantity: 0,
-            strLocation: row['Ubicación'] || '',
+            strLocation: resolvedLocationName,
             categoryId: categoryId,
             strStatus: 'Active',
             blnBulkUpload: true
@@ -675,6 +696,14 @@ export class MaterialsService {
         };
       }
 
+      // Precargar códigos de ubicación válidos del tenant (para validar la columna Ubicación)
+      const locRows = await this.dataSource.query(
+        `SELECT UPPER("locationCode") AS code FROM manufacturing.warehouse_locations
+         WHERE "tenantId" = $1 AND status = 'active' AND "locationCode" IS NOT NULL`,
+        [tenantId]
+      ).catch(() => []);
+      const validLocationCodes = new Set<string>((locRows || []).map((r: any) => r.code));
+
       for (let i = 0; i < data.length; i++) {
         const row = data[i] as any;
         const rowErrors = [];
@@ -685,6 +714,12 @@ export class MaterialsService {
         if (!row['Stock Máximo*']) rowErrors.push('Stock Máximo requerido');
         if (!row['Stock Mínimo*']) rowErrors.push('Stock Mínimo requerido');
         if (!row['ID Categoría*']) rowErrors.push('ID Categoría requerido');
+
+        // Validar ubicación por código (opcional, pero si se indica debe existir)
+        const rawLoc = (row['Ubicación'] || '').toString().trim().toUpperCase();
+        if (rawLoc && !validLocationCodes.has(rawLoc)) {
+          rowErrors.push(`Ubicación "${row['Ubicación']}" no existe (usa el código de una ubicación registrada)`);
+        }
 
         if (rowErrors.length > 0) {
           errors.push({ row: i + 2, name: row['Nombre*'] || 'Sin nombre', errors: rowErrors });

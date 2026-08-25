@@ -21,4 +21,4 @@ ENV NODE_ENV=production
 ENV APP_PORT=3001
 EXPOSE 3001
 
-CMD ["node", "dist/src/main"]
+CMD ["node", "dist/main"]

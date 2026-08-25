@@ -19,6 +19,11 @@ export class WarehouseLocation {
   @Column({ type: 'varchar', length: 100 })
   name: string; // e.g. "Pasillo A - Estante 3 - Bin 2"
 
+  // Código corto único por tenant para referenciar la ubicación en cargas masivas
+  // (ej. "C-01", "Z15-10"). Se genera automáticamente al crear la ubicación.
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  locationCode: string;
+
   @Column({ type: 'varchar', length: 50, nullable: true })
   aisle: string;
 

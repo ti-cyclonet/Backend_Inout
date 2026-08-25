@@ -100,8 +100,8 @@ export class MaterialsController {
       const workbook = XLSX.utils.book_new();
       
       const data = [
-        ['Nombre*', 'Descripción', 'Precio', 'Unidad Medida*', 'Unidad Descarga*', 'Stock Máximo*', 'Stock Mínimo*', 'Ubicación', 'ID Categoría'],
-        ['Material Ejemplo', 'Descripción del material', '0', 'Kilogramos', 'Kilogramos', '100', '10', 'Bodega A', '1']
+        ['Nombre*', 'Descripción', 'Precio', 'Unidad Medida*', 'Unidad Descarga*', 'Stock Máximo*', 'Stock Mínimo*', 'Ubicación (código)', 'ID Categoría'],
+        ['Material Ejemplo', 'Descripción del material', '0', 'Kilogramos', 'Kilogramos', '100', '10', 'C-01', '1']
       ];
       const worksheet = XLSX.utils.aoa_to_sheet(data);
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Materiales');
