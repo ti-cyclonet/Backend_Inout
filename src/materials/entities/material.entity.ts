@@ -46,7 +46,7 @@ export class Material {
   @Column({ type: 'varchar', length: 20, nullable: false, default: 'Active' })
   strStatus: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   strLocation: string;
 
   @Column({ type: 'int', nullable: true })

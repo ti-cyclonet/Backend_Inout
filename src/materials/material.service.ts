@@ -511,11 +511,13 @@ export class MaterialsService {
 
           // Resolver la ubicación por su código corto (locationCode).
           // Si se indica un código en la columna "Ubicación", debe existir para este tenant.
+          // Se guarda el CÓDIGO (no el nombre largo) para mantener consistencia con el
+          // formulario, el badge de la UI y respetar el límite de la columna strLocation.
           const rawLocation = (row['Ubicación'] || '').toString().trim();
-          let resolvedLocationName = '';
+          let resolvedLocationCode = '';
           if (rawLocation) {
             const locRows = await this.dataSource.query(
-              `SELECT name FROM manufacturing.warehouse_locations
+              `SELECT "locationCode" FROM manufacturing.warehouse_locations
                WHERE "tenantId" = $1 AND UPPER("locationCode") = UPPER($2) AND status = 'active'
                LIMIT 1`,
               [tenantId, rawLocation]
@@ -527,7 +529,7 @@ export class MaterialsService {
               });
               continue;
             }
-            resolvedLocationName = locRows[0].name;
+            resolvedLocationCode = locRows[0].locationCode;
           }
 
           const materialDto: CreateMaterialDto = {
@@ -539,7 +541,7 @@ export class MaterialsService {
             ingMaxStock: parseInt(row['Stock Máximo*']) || 0,
             ingMinStock: parseInt(row['Stock Mínimo*']) || 0,
             ingQuantity: 0,
-            strLocation: resolvedLocationName,
+            strLocation: resolvedLocationCode,
             categoryId: categoryId,
             strStatus: 'Active',
             blnBulkUpload: true
