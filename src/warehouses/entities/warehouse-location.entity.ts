@@ -31,6 +31,17 @@ export class WarehouseLocation {
   @Column({ type: 'varchar', length: 100, nullable: true })
   capacity: string;
 
+  // Agrupación en zonas: varias posiciones (bins) pueden pertenecer a una misma zona
+  // (ej. "ZONA 15 - Productos NC" que abarca las posiciones 10,11,12,17,18,19 de un estante).
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  zone: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  zoneCode: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string;
+
   @Column({ type: 'varchar', length: 50, default: 'active' })
   status: string;
 
