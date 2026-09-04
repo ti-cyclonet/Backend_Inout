@@ -14,13 +14,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // Usar basicDataId como tenantId principal, luego contractId como fallback
-    const tenantId = payload.basicDataId || payload.tenantId || payload.contractId || payload.contract_id;
-    return { 
-      id: payload.sub, 
-      email: payload.email, 
+    // tenantId = dueño del contrato (lo emite Authoriza). NO usar contractId como
+    // fallback (es otro namespace y contamina el scope de inventario).
+    const tenantId = payload.tenantId || null;
+    return {
+      id: payload.sub,
+      email: payload.email,
       tenantId: tenantId,
-      role: payload.role || payload.rol || 'viewer',
+      contractId: payload.contractId || null,
+      // No inventar 'viewer' por defecto: si no hay rol, se deja undefined y el
+      // RolesGuard rechaza (en vez de conceder acceso silencioso).
+      role: payload.role || payload.rol || undefined,
     };
   }
 }
