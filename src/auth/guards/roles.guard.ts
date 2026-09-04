@@ -30,8 +30,16 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('No tienes un rol asignado para acceder a este recurso.');
     }
 
-    // adminInout has full access (maps to 'admin' internally)
+    // Normalizar el rol de Authoriza a un rol interno de InOut.
+    // Si el rol NO pertenece a InOut (ej. token de Shotra/Kiri/FactoNet), se
+    // rechaza el acceso en vez de degradarlo silenciosamente a 'viewer'.
     const userRole = this.normalizeRole(user.role);
+
+    if (!userRole) {
+      throw new ForbiddenException(
+        'Este token no tiene un rol válido de InOut. Inicia sesión en InOut para obtener acceso.',
+      );
+    }
 
     if (!requiredRoles.includes(userRole)) {
       throw new ForbiddenException(
@@ -44,11 +52,10 @@ export class RolesGuard implements CanActivate {
 
   /**
    * Normalize Authoriza role names to InOut internal roles.
-   * adminInout → admin
-   * operatorInout → operator
-   * viewerInout → viewer
+   * adminInout → admin, operatorInout → operator, viewerInout → viewer.
+   * Devuelve null si el rol NO es de InOut (para rechazar tokens de otras apps).
    */
-  private normalizeRole(role: string): string {
+  private normalizeRole(role: string): string | null {
     const roleMap: Record<string, string> = {
       'adminInout': 'admin',
       'operatorInout': 'operator',
@@ -57,6 +64,6 @@ export class RolesGuard implements CanActivate {
       'operator': 'operator',
       'viewer': 'viewer',
     };
-    return roleMap[role] || 'viewer';
+    return roleMap[role] || null;
   }
 }
