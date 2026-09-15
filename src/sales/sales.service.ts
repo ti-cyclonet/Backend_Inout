@@ -99,19 +99,25 @@ export class SalesService {
         const ivaRate = Number(params.IVA_PORCENTAJE || 0);
         const effectiveRate = incRate > 0 ? incRate : ivaRate;
         tax = subtotal * (effectiveRate / 100);
-        total = subtotal + tax;
-      } else if (!total) {
-        total = subtotal + (tax || 0);
       }
 
-      // Validar descuento si viene en los items
-      if (createDto.discount && params.PORCENTAJE_DESCUENTO_MAX < 100) {
-        const discountPercent = (createDto.discount / subtotal) * 100;
+      // Descuento: si el cliente envía uno manual, validarlo contra el máximo
+      // permitido; si no envía nada, aplicar automáticamente el % de descuento
+      // configurado para el periodo activo (PORCENTAJE_DESCUENTO).
+      let discount = createDto.discount;
+      if (discount) {
+        const discountPercent = (discount / subtotal) * 100;
         if (discountPercent > params.PORCENTAJE_DESCUENTO_MAX) {
           throw new BadRequestException(
             `El descuento (${discountPercent.toFixed(1)}%) excede el máximo permitido (${params.PORCENTAJE_DESCUENTO_MAX}%)`
           );
         }
+      } else {
+        discount = await this.businessParamsService.calculateAutoDiscount(tenantId, subtotal);
+      }
+
+      if (!total) {
+        total = subtotal + (tax || 0) - discount;
       }
 
       const invoiceCode = await this.generateInvoiceCode(tenantId);
@@ -128,6 +134,7 @@ export class SalesService {
         items: createDto.items,
         subtotal: subtotal,
         tax: tax || 0,
+        discount: discount || 0,
         total: total
       });
       const savedSale = await queryRunner.manager.save(sale);
@@ -163,6 +170,7 @@ export class SalesService {
         appliedParams: {
           ivaPercent: params.IVA_PORCENTAJE,
           taxApplied: tax || 0,
+          discountApplied: discount || 0,
           loyaltyPoints,
         }
       };
