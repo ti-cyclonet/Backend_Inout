@@ -15,7 +15,8 @@ export class PeriodsService {
         name: periodo.nombre,
         startDate: periodo.fechaInicio,
         endDate: periodo.fechaFin,
-        tenantId: tenantId
+        tenantId: tenantId,
+        source: 'INOUT',
       };
       
       const response = await fetch(`${this.authorizaUrl}/api/periods`, {
@@ -43,7 +44,8 @@ export class PeriodsService {
         startDate: subperiodo.fechaInicio,
         endDate: subperiodo.fechaFin,
         parentPeriodId: subperiodo.parentPeriodId,
-        tenantId: tenantId
+        tenantId: tenantId,
+        source: 'INOUT',
       };
       
       const response = await fetch(`${this.authorizaUrl}/api/periods/subperiods`, {
@@ -104,16 +106,16 @@ export class PeriodsService {
 
   async findAll(tenantId: string) {
     try {
-      const response = await fetch(`${this.authorizaUrl}/api/periods`);
-      
+      // Filtrar en Authoriza por tenant Y por app: la tabla de periodos es
+      // compartida con FactoNet, y sin el filtro de source aqui se veian (y
+      // se podian anidar) periodos de FactoNet que compartian tenantId.
+      const response = await fetch(`${this.authorizaUrl}/api/periods?tenantId=${encodeURIComponent(tenantId)}&source=INOUT`);
+
       if (!response.ok) {
         throw new HttpException('Error fetching periods from Authoriza', HttpStatus.BAD_GATEWAY);
       }
 
-      const allPeriods = await response.json();
-      // Filtrar solo periodos del tenant específico
-      const tenantPeriods = allPeriods.filter(period => period.tenantId === tenantId);
-      return tenantPeriods;
+      return await response.json();
     } catch (error) {
       if (error.code === 'ECONNREFUSED') {
         throw new HttpException('Authoriza service is not available', HttpStatus.SERVICE_UNAVAILABLE);
@@ -124,7 +126,7 @@ export class PeriodsService {
 
   async getActivePeriod(tenantId: string) {
     try {
-      const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/${tenantId}`);
+      const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/${tenantId}?source=INOUT`);
       
       if (!response.ok) {
         if (response.status === 404) {
