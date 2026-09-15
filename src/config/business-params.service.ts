@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
  * - IVA_PORCENTAJE: % de IVA (default 0)
  * - PORCENTAJE_GANANCIA: % de margen de ganancia (default 0)
  * - PORCENTAJE_DESCUENTO_MAX: % máximo de descuento (default 100)
+ * - PORCENTAJE_DESCUENTO: % de descuento que se aplica automáticamente a las ventas (default 0)
  * - PENALIZACION_MORA: % de penalización por mora (default 0)
  * - INTERES_CREDITO: % de interés mensual para ventas a crédito (default 0)
  * - PUNTOS_POR_COMPRA: puntos por cada compra (default 10)
@@ -27,6 +28,7 @@ export class BusinessParamsService {
     INC_PORCENTAJE: 0,
     PORCENTAJE_GANANCIA: 0,
     PORCENTAJE_DESCUENTO_MAX: 100,
+    PORCENTAJE_DESCUENTO: 0,
     PENALIZACION_MORA: 0,
     INTERES_CREDITO: 0,
     PUNTOS_POR_COMPRA: 10,
@@ -138,6 +140,19 @@ export class BusinessParamsService {
       valid: discountPercent <= maxDiscount,
       maxAllowed: maxDiscount,
     };
+  }
+
+  /**
+   * Calcula el descuento automático del periodo activo (PORCENTAJE_DESCUENTO),
+   * limitado por PORCENTAJE_DESCUENTO_MAX. Retorna el monto a restar del subtotal.
+   */
+  async calculateAutoDiscount(tenantId: string, subtotal: number): Promise<number> {
+    const params = await this.getParams(tenantId);
+    const configuredPercent = Number(params.PORCENTAJE_DESCUENTO || 0);
+    const maxPercent = Number(params.PORCENTAJE_DESCUENTO_MAX ?? 100);
+    const effectivePercent = Math.min(configuredPercent, maxPercent);
+    if (effectivePercent <= 0) return 0;
+    return subtotal * (effectivePercent / 100);
   }
 
   /**

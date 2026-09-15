@@ -39,6 +39,9 @@ export class Sale {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   tax: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, default: 0 })
+  discount: number;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   total: number;
 
