@@ -67,22 +67,28 @@ export class PeriodsService {
   }
 
   async activate(periodoId: string) {
+    let response: Response;
     try {
-      const response = await fetch(`${this.authorizaUrl}/api/periods/${periodoId}/activate`, {
+      response = await fetch(`${this.authorizaUrl}/api/periods/${periodoId}/activate`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
       });
-      
-      if (!response.ok) {
-        throw new HttpException('Error activating period in Authoriza', HttpStatus.BAD_GATEWAY);
-      }
-
-      return await response.json();
     } catch (error) {
-      throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
+      throw new HttpException('Authoriza service is not available', HttpStatus.SERVICE_UNAVAILABLE);
     }
+
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      // Propagar el status y mensaje reales de Authoriza (p. ej. "No se puede
+      // activar un subperíodo expirado", 400) en vez de siempre reportar 503
+      // y ocultar la causa real al frontend.
+      throw new HttpException(body?.message || 'Error activating period in Authoriza', response.status);
+    }
+
+    return body;
   }
 
   async remove(periodoId: string) {
