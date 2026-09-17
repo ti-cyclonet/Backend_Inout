@@ -30,6 +30,16 @@ export class BusinessParamsController {
   }
 
   /**
+   * GET /business-params/overhead
+   * Costos indirectos mensuales del negocio (arriendo, servicios, nómina),
+   * total y desglosados, para prorratear entre las unidades a producir.
+   */
+  @Get('overhead')
+  async getOverhead(@GetTenantId() tenantId: string) {
+    return this.businessParamsService.getMonthlyOverhead(tenantId);
+  }
+
+  /**
    * GET /business-params/suggested-price?cost=50000
    * Calcula el precio de venta sugerido según margen configurado.
    */
