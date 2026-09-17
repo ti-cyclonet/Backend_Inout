@@ -28,6 +28,10 @@ export class CreateProductDto {
   @IsNumber()
   fltPrice: number;
 
+  @IsNumber()
+  @IsOptional()
+  fltCost?: number;
+
   @IsString()
   strMeasurementUnit: string;
 
