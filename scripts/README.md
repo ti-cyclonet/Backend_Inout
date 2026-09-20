@@ -22,32 +22,45 @@ Reset de **2 pasos**: vaciar datos (SQL) y reiniciar el contenedor.
 
 ## Archivos
 
-- `reset-database.sql` — `TRUNCATE ... RESTART IDENTITY CASCADE` de las 24 tablas
-  del schema `manufacturing`. No hay FKs circulares. Cuidado: los nombres
-  `"materials-t"` (con guion) y `"compositionOne"` (camelCase) van entre comillas.
+- `reset-database.sql` — reset de **producción**. Descubre dinámicamente todas
+  las tablas del schema `manufacturing` (vía `pg_tables`, no depende de una
+  lista fija) y hace `TRUNCATE ... RESTART IDENTITY CASCADE` de una sola vez.
+  No hay FKs circulares. Incluye un freno de seguridad (aborta si no estás
+  conectado a `InoutDB`) y pide escribir `RESETEAR` a mano antes de borrar
+  nada — por eso **requiere psql**, no TablePlus/DBeaver (esas herramientas no
+  ejecutan meta-comandos `\prompt`/`\if` de psql).
+- `reset-staging-db.sql` — misma lógica de descubrimiento dinámico, sin el
+  freno de confirmación (pensado para staging/local, donde el costo de un
+  error es bajo). Se puede correr desde TablePlus.
 
-## Pasos
+## Pasos (producción)
 
-### 1. Ejecutar el SQL (TablePlus o psql)
-
-Conéctate a la base de **InOut** y **verifica primero**:
-
-```sql
-SELECT current_database();   -- debe decir InoutDB (o InoutDB_staging en staging)
-```
-
-Ejecuta el contenido de `reset-database.sql`.
-
-> Nota TablePlus: si tu conexión no tiene el `search_path` en `manufacturing`,
-> las tablas de este script funcionan igual porque van calificadas con el schema
-> (`manufacturing.<tabla>`).
-
-Alternativa por consola:
+### 0. Backup (obligatorio)
 
 ```bash
-psql "host=<HOST> port=5432 dbname=InoutDB user=cyclonet_admin sslmode=require" \
+pg_dump "host=<RDS_HOST> port=5432 dbname=InoutDB user=cyclonet_admin sslmode=require" \
+  --format=custom -f inout_prod_backup_$(date +%Y%m%d_%H%M).dump
+```
+
+Para restaurarlo si algo sale mal:
+
+```bash
+pg_restore --clean --if-exists \
+  -d "host=<RDS_HOST> port=5432 dbname=InoutDB user=cyclonet_admin sslmode=require" \
+  inout_prod_backup_YYYYMMDD_HHMM.dump
+```
+
+### 1. Ejecutar el SQL (por terminal, con psql)
+
+```bash
+psql "host=<RDS_HOST> port=5432 dbname=InoutDB user=cyclonet_admin sslmode=require" \
   -f reset-database.sql
 ```
+
+El script primero verifica que estás conectado a `InoutDB` (aborta si no),
+muestra el conteo de filas por tabla ANTES de borrar, pide que escribas
+`RESETEAR` para continuar (cualquier otra cosa cancela sin tocar nada), trunca
+todo, y vuelve a mostrar el conteo (debe quedar en 0 en todas las tablas).
 
 ### 2. Reiniciar el contenedor (asegura el esquema sincronizado)
 

@@ -117,6 +117,18 @@ export class CategoriesService {
         throw new BadRequestException('El archivo está vacío');
       }
 
+      // Si la plantilla trae la columna "Tipo_plantilla" (marca de qué tipo de
+      // plantilla es: MATERIALES/CATEGORIAS), verificar que coincida con este
+      // endpoint. Evita que el cliente suba por error la plantilla de
+      // materiales al importador de categorías. Si la columna no existe
+      // (plantillas antiguas sin la marca), se deja pasar.
+      const templateType = (data[0] as any)?.['Tipo_plantilla'];
+      if (templateType && String(templateType).trim().toUpperCase() !== 'CATEGORIAS') {
+        throw new BadRequestException(
+          `El archivo cargado parece ser una plantilla de "${templateType}", no de categorías. Verifica que estés subiendo el archivo correcto.`,
+        );
+      }
+
       const results = { success: 0, errors: [] };
 
       for (const row of data) {
