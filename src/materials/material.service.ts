@@ -441,6 +441,18 @@ export class MaterialsService {
         throw new BadRequestException('El archivo está vacío');
       }
 
+      // Si la plantilla trae la columna "Tipo_plantilla" (marca de qué tipo de
+      // plantilla es: MATERIALES/CATEGORIAS), verificar que coincida con este
+      // endpoint. Evita que el cliente suba por error la plantilla de
+      // categorías al importador de materiales. Si la columna no existe
+      // (plantillas antiguas sin la marca), se deja pasar.
+      const templateType = (data[0] as any)?.['Tipo_plantilla'];
+      if (templateType && String(templateType).trim().toUpperCase() !== 'MATERIALES') {
+        throw new BadRequestException(
+          `El archivo cargado parece ser una plantilla de "${templateType}", no de materiales. Verifica que estés subiendo el archivo correcto.`,
+        );
+      }
+
       // === VALIDACIÓN DE LÍMITE DE USO ===
       // Verificar cuántos materiales puede crear según su paquete
       const limitsResponse = await this.limitEnforcementService.fetchLimits(tenantId);
@@ -622,6 +634,19 @@ export class MaterialsService {
 
       if (!data || data.length === 0) {
         return { valid: false, message: 'La hoja de cálculo está vacía. Debe contener al menos una fila de datos además del encabezado', errors: [], totalRows: 0, validRows: 0 };
+      }
+
+      // Ver bulkUpload() para el detalle: si la columna "Tipo_plantilla" está
+      // presente y no dice MATERIALES, es la plantilla equivocada.
+      const templateType = (data[0] as any)?.['Tipo_plantilla'];
+      if (templateType && String(templateType).trim().toUpperCase() !== 'MATERIALES') {
+        return {
+          valid: false,
+          message: `El archivo cargado parece ser una plantilla de "${templateType}", no de materiales. Verifica que estés subiendo el archivo correcto.`,
+          errors: [],
+          totalRows: data.length,
+          validRows: 0,
+        };
       }
 
       // === VALIDACIÓN DE LÍMITE DE USO ===

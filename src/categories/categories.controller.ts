@@ -16,9 +16,9 @@ export class CategoriesController {
     const workbook = XLSX.utils.book_new();
     
     const data = [
-      ['Nombre*', 'Descripción'],
-      ['Proteínas y Embutidos', 'Carnes rojas, aves, pescados, mariscos y huevos'],
-      ['Vegetales y Frutas', 'Productos frescos de huerta']
+      ['Nombre*', 'Descripción', '', '', '', '', '', '', '', '', 'Tipo_plantilla'],
+      ['Proteínas y Embutidos', 'Carnes rojas, aves, pescados, mariscos y huevos', '', '', '', '', '', '', '', '', 'CATEGORIAS'],
+      ['Vegetales y Frutas', 'Productos frescos de huerta', '', '', '', '', '', '', '', '', 'CATEGORIAS']
     ];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Categorías');
