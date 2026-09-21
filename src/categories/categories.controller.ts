@@ -18,9 +18,15 @@ export class CategoriesController {
     const data = [
       ['Nombre*', 'Descripción', '', '', '', '', '', '', '', '', 'Tipo_plantilla'],
       ['Proteínas y Embutidos', 'Carnes rojas, aves, pescados, mariscos y huevos', '', '', '', '', '', '', '', '', 'CATEGORIAS'],
-      ['Vegetales y Frutas', 'Productos frescos de huerta', '', '', '', '', '', '', '', '', 'CATEGORIAS']
+      ['Vegetales y Frutas', 'Productos frescos de huerta']
     ];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
+    // Columna K (Tipo_plantilla) es solo un control interno para validar el
+    // tipo de plantilla al subir el archivo; se oculta para que el cliente
+    // no la vea ni la diligencie por error. Solo lleva valor en la primera
+    // fila de datos, no hace falta repetirla en cada fila.
+    worksheet['!cols'] = worksheet['!cols'] || [];
+    worksheet['!cols'][10] = { hidden: true };
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Categorías');
     
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
