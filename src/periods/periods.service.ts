@@ -91,6 +91,34 @@ export class PeriodsService {
     return body;
   }
 
+  async update(periodoId: string, periodo: any) {
+    let response: Response;
+    try {
+      const payload: any = {};
+      if (periodo.nombre !== undefined) payload.name = periodo.nombre;
+      if (periodo.fechaInicio !== undefined) payload.startDate = periodo.fechaInicio;
+      if (periodo.fechaFin !== undefined) payload.endDate = periodo.fechaFin;
+
+      response = await fetch(`${this.authorizaUrl}/api/periods/${periodoId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      throw new HttpException('Authoriza service is not available', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new HttpException(body?.message || 'Error updating period in Authoriza', response.status);
+    }
+
+    return body;
+  }
+
   async remove(periodoId: string) {
     try {
       const response = await fetch(`${this.authorizaUrl}/api/periods/${periodoId}`, {

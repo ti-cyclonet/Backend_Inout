@@ -38,6 +38,11 @@ export class PeriodsController {
     return this.periodsService.activate(id);
   }
 
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updatePeriodDto: any) {
+    return this.periodsService.update(id, updatePeriodDto);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.periodsService.remove(id);
