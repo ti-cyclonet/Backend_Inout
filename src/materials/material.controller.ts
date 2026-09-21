@@ -104,6 +104,11 @@ export class MaterialsController {
         ['Material Ejemplo', 'Descripción del material', '0', 'Kilogramos', 'Kilogramos', '100', '10', 'C-01', '1', '', 'MATERIALES']
       ];
       const worksheet = XLSX.utils.aoa_to_sheet(data);
+      // Columna K (Tipo_plantilla) es solo un control interno para validar el
+      // tipo de plantilla al subir el archivo; se oculta para que el cliente
+      // no la vea ni la diligencie por error.
+      worksheet['!cols'] = worksheet['!cols'] || [];
+      worksheet['!cols'][10] = { hidden: true };
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Materiales');
       
       const configData = [
