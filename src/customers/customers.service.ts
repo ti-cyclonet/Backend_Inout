@@ -57,11 +57,15 @@ export class CustomersService {
     }
   }
 
-  async findByTenantId(tenantId: string): Promise<Customer[]> {
-    return this.customerRepository.find({
-      where: { tenantId, isActive: true },
-      order: { createdAt: 'DESC' },
-    });
+  /**
+   * Los clientes de InOut ya NO viven en una tabla local: son usuarios reales
+   * de Authoriza (rol `clienteInout`, dependientes del tenant), lo que los
+   * deja habilitados como potenciales usuarios del resto del ecosistema. Este
+   * método reemplaza la lectura de la tabla `customer` local por una consulta
+   * a Authoriza, filtrando los dependientes del tenant por ese rol.
+   */
+  async findByTenantId(tenantId: string): Promise<any[]> {
+    return this.findClientsFromAuthoriza(tenantId);
   }
 
   async findById(id: string): Promise<Customer> {
@@ -77,34 +81,62 @@ export class CustomersService {
   }
 
   async getCustomersWithDetails(tenantId: string): Promise<any[]> {
-    const customers = await this.findByTenantId(tenantId);
-    
-    const customersWithDetails = await Promise.all(
-      customers.map(async (customer) => {
-        try {
-          if (customer.potentialUserId) {
-            const response = await firstValueFrom(
-              this.httpService.get(`${this.authorizaApiUrl}/potential-users/${customer.potentialUserId}`)
-            );
-            const potentialUser = response.data;
-            
-            return {
-              ...customer,
-              potentialUserDetails: potentialUser,
-            };
-          }
-          return customer;
-        } catch (error) {
-          return {
-            ...customer,
-            potentialUserDetails: null,
-            error: 'Potential user not found',
-          };
-        }
-      })
-    );
+    // Ya vienen con todos los detalles de BasicData resueltos desde Authoriza.
+    return this.findClientsFromAuthoriza(tenantId);
+  }
 
-    return customersWithDetails;
+  private async findClientsFromAuthoriza(tenantId: string): Promise<any[]> {
+    try {
+      const contractId = await this.getInoutContractId(tenantId);
+      const query = contractId ? `?contractId=${contractId}` : '';
+      const response = await firstValueFrom(
+        this.httpService.get(`${this.authorizaApiUrl}/user-dependencies/principal/${tenantId}/roles${query}`),
+      );
+      const dependents: any[] = response.data || [];
+
+      return dependents
+        .filter((dep) => (dep.roles || []).some((r: any) => r.name === 'clienteInout'))
+        .map((dep) => this.mapAuthorizaClientToCustomer(dep, tenantId));
+    } catch (error) {
+      console.error('Error obteniendo clientes (rol clienteInout) desde Authoriza:', error?.message);
+      return [];
+    }
+  }
+
+  private mapAuthorizaClientToCustomer(dep: any, tenantId: string): any {
+    return {
+      id: dep.userId,
+      authorizaUserId: dep.userId,
+      tenantId,
+      customerCode: dep.code || null,
+      businessName: dep.businessName || null,
+      contactPerson: null,
+      phone: dep.phone || null,
+      email: dep.email,
+      address: null,
+      documentType: dep.documentType || null,
+      documentNumber: dep.documentNumber || null,
+      personType: dep.personType || null,
+      firstName: dep.firstName || null,
+      secondName: dep.secondName || null,
+      firstSurname: dep.firstSurname || null,
+      secondSurname: dep.secondSurname || null,
+      status: dep.status,
+      isActive: dep.isActive,
+      createdAt: dep.createdAt,
+    };
+  }
+
+  /** Contrato de InOut del tenant (necesario para filtrar los roles del dependiente por ese contrato). */
+  private async getInoutContractId(tenantId: string): Promise<string | null> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`${this.authorizaApiUrl}/contracts/tenant/${tenantId}/limits?application=Inout`),
+      );
+      return response.data?.contractId || null;
+    } catch {
+      return null;
+    }
   }
 
   async remove(id: string): Promise<void> {
