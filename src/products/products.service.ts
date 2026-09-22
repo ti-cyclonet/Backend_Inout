@@ -12,6 +12,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 import { BusinessParamsService } from '../config/business-params.service';
+import { convertUnits } from 'src/common/utils/unit-conversion';
 
 @Injectable()
 export class ProductsService {
@@ -242,11 +243,19 @@ export class ProductsService {
       });
 
       if (material) {
+        // La receta se define en la unidad de DESCARGA del material (ej. g),
+        // pero el stock (ingQuantity) vive en su unidad de MEDIDA (ej. kg).
+        const quantity = parseFloat(comp.fltQuantity.toString());
+        const dischargeUnit = material.strDischargeUnit || material.strUnitMeasure;
+        const quantityInStockUnit = convertUnits(quantity, dischargeUnit, material.strUnitMeasure);
+
         ingredients.push({
           name: material.strName,
-          quantity: parseFloat(comp.fltQuantity.toString()),
-          unit: material.strUnitMeasure,
+          quantity,
+          unit: dischargeUnit,
+          quantityInStockUnit,
           stock: parseFloat(material.ingQuantity.toString()),
+          stockUnit: material.strUnitMeasure,
           unitPrice: parseFloat(material.fltPrice.toString()),
           type: 'material',
         });
@@ -266,11 +275,17 @@ export class ProductsService {
         .getOne();
 
       if (transformedMaterial) {
+        const quantity = parseFloat(comp.fltQuantity.toString());
+        const dischargeUnit = (transformedMaterial as any).strDischargeUnit || transformedMaterial.strUnitMeasure;
+        const quantityInStockUnit = convertUnits(quantity, dischargeUnit, transformedMaterial.strUnitMeasure);
+
         ingredients.push({
           name: transformedMaterial.strName,
-          quantity: parseFloat(comp.fltQuantity.toString()),
-          unit: transformedMaterial.strUnitMeasure,
+          quantity,
+          unit: dischargeUnit,
+          quantityInStockUnit,
           stock: parseFloat(transformedMaterial.ingQuantity.toString()),
+          stockUnit: transformedMaterial.strUnitMeasure,
           unitPrice: parseFloat(transformedMaterial.fltPrice.toString()),
           type: 'composite',
         });
@@ -300,11 +315,14 @@ export class ProductsService {
       // Generar código de lote automáticamente
       const batchReference = await this.generateBatchCode(tenantId);
 
-      // Calcular costo unitario basado en ingredientes (costo directo)
+      // Calcular costo unitario basado en ingredientes (costo directo).
+      // unitPrice está expresado por unidad de MEDIDA (stock), no por unidad
+      // de descarga, así que el costo se calcula con quantityInStockUnit
+      // (ya convertida) y no con quantity (tal como se definió la receta).
       const ingredients = await this.getIngredients(productId);
       let directCost = 0;
       ingredients.forEach(ing => {
-        directCost += ing.quantity * ing.unitPrice;
+        directCost += ing.quantityInStockUnit * ing.unitPrice;
       });
 
       // Calcular costo indirecto por unidad (distribución de overhead mensual)
@@ -358,30 +376,33 @@ export class ProductsService {
       });
 
       for (const comp of compositionTwo) {
+        // totalNeeded está en la unidad de DESCARGA del material (la de la receta).
         const totalNeeded = parseFloat(comp.fltQuantity.toString()) * parseFloat(quantity);
-        
-        // Obtener el precio del material para el registro del movimiento
+
+        // Obtener precio y unidades del material para convertir y registrar el movimiento
         const material = await queryRunner.manager.query(
-          `SELECT "fltPrice" FROM manufacturing.materials WHERE "strId" = $1`,
+          `SELECT "fltPrice", "strUnitMeasure", "strDischargeUnit" FROM manufacturing.materials WHERE "strId" = $1`,
           [comp.strMaterialId]
         );
-        
+        const dischargeUnit = material[0]?.strDischargeUnit || material[0]?.strUnitMeasure;
+        const totalNeededInStockUnit = convertUnits(totalNeeded, dischargeUnit, material[0]?.strUnitMeasure);
+
         await queryRunner.manager.query(
           `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
-          [totalNeeded, comp.strMaterialId]
+          [totalNeededInStockUnit, comp.strMaterialId]
         );
-        
+
         // Registrar movimiento de inventario para materiales simples
         await queryRunner.manager.query(
-          `INSERT INTO manufacturing.inventory_movements 
-           ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate") 
+          `INSERT INTO manufacturing.inventory_movements
+           ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             tenantId,
             comp.strMaterialId,
             'OUT',
             'PRODUCTION',
-            totalNeeded,
+            totalNeededInStockUnit,
             material[0]?.fltPrice || 0,
             production.strId,
             `Salida para producción: ${product.strName} - Lote: ${batchReference}`,
@@ -395,28 +416,31 @@ export class ProductsService {
       });
 
       for (const comp of compositionThree) {
+        // totalNeeded está en la unidad de DESCARGA del material compuesto.
         const totalNeeded = parseFloat(comp.fltQuantity.toString()) * parseFloat(quantity);
-        
+
         const transformedMaterial = await queryRunner.manager.query(
-          `SELECT "fltPrice" FROM manufacturing."materials-t" WHERE "strId" = $1`,
+          `SELECT "fltPrice", "strUnitMeasure", "strDischargeUnit" FROM manufacturing."materials-t" WHERE "strId" = $1`,
           [comp.strTransformedMaterialId]
         );
-        
+        const dischargeUnit = transformedMaterial[0]?.strDischargeUnit || transformedMaterial[0]?.strUnitMeasure;
+        const totalNeededInStockUnit = convertUnits(totalNeeded, dischargeUnit, transformedMaterial[0]?.strUnitMeasure);
+
         await queryRunner.manager.query(
           `UPDATE manufacturing."materials-t" SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
-          [totalNeeded, comp.strTransformedMaterialId]
+          [totalNeededInStockUnit, comp.strTransformedMaterialId]
         );
-        
+
         await queryRunner.manager.query(
-          `INSERT INTO manufacturing.inventory_movements 
-           ("strTenantId", "strTransformedMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate") 
+          `INSERT INTO manufacturing.inventory_movements
+           ("strTenantId", "strTransformedMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             tenantId,
             comp.strTransformedMaterialId,
             'OUT',
             'PRODUCTION',
-            totalNeeded,
+            totalNeededInStockUnit,
             transformedMaterial[0]?.fltPrice || 0,
             production.strId,
             `Salida para producción: ${product.strName} - Lote: ${batchReference}`,
