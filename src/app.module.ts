@@ -29,6 +29,8 @@ import { ProductComposition } from './products/entities/product-composition.enti
 import { CompositionTwo } from './products/entities/composition-two.entity';
 import { CompositionThree } from './products/entities/composition-three.entity';
 import { ProductProduction } from './products/entities/product-production.entity';
+import { ProductionPlan } from './production-plans/entities/production-plan.entity';
+import { ProductionPlansModule } from './production-plans/production-plans.module';
 import { Sale } from './sales/entities/sale.entity';
 import { MarketplaceConfig } from './marketplace-config/entities/marketplace-config.entity';
 import { AuthModule } from './auth/auth.module';
@@ -61,7 +63,7 @@ import { PhysicalCount } from './warehouses/entities/physical-count.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount], 
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -80,6 +82,7 @@ import { PhysicalCount } from './warehouses/entities/physical-count.entity';
     PurchasesModule,
     CategoriesModule,
     ProductsModule,
+    ProductionPlansModule,
     InventoryMovementsModule,
     SalesModule,
     CustomersModule,
