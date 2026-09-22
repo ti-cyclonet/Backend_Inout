@@ -74,7 +74,50 @@ export class OrdersService {
     return { message: 'Pedido creado exitosamente', order: savedOrder };
   }
 
+  /** Checkout anónimo (sin sesión): sigue funcionando igual que antes — no es
+   * obligatorio iniciar sesión para comprar. Si el comprador dio su correo,
+   * además queda registrado en Authoriza como cliente potencial (best-effort,
+   * no bloquea el pedido si esa llamada falla). */
   async createFromMarketplace(createDto: CreateMarketplaceOrderDto) {
+    const savedOrder = await this.saveMarketplaceOrder(createDto, {
+      customerId: null,
+      customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
+    });
+
+    if (createDto.customerEmail) {
+      this.registerPotentialCustomer(createDto).catch((err) =>
+        console.error('No se pudo registrar el cliente potencial en Authoriza:', err?.message),
+      );
+    }
+
+    const whatsapp = await this.getMarketplaceWhatsapp(createDto.tenantId);
+    return {
+      message: 'Pedido creado exitosamente desde marketplace',
+      order: savedOrder,
+      ...(whatsapp && { whatsapp }),
+    };
+  }
+
+  /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
+   * userId real de Authoriza en vez de solo un texto libre. */
+  async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string) {
+    const savedOrder = await this.saveMarketplaceOrder(createDto, {
+      customerId: authUserId,
+      customerName: createDto.customerName,
+    });
+
+    const whatsapp = await this.getMarketplaceWhatsapp(createDto.tenantId);
+    return {
+      message: 'Pedido creado exitosamente desde marketplace',
+      order: savedOrder,
+      ...(whatsapp && { whatsapp }),
+    };
+  }
+
+  private async saveMarketplaceOrder(
+    createDto: CreateMarketplaceOrderDto,
+    customer: { customerId: string | null; customerName: string },
+  ) {
     const { tenantId } = createDto;
     const orderCode = await this.generateOrderCode(tenantId);
 
@@ -82,8 +125,8 @@ export class OrdersService {
       tenantId,
       orderCode,
       status: OrderStatus.CONFIRMED,
-      customerId: null,
-      customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
+      customerId: customer.customerId,
+      customerName: customer.customerName,
       items: createDto.items,
       notes: createDto.notes || null,
       subtotal: createDto.subtotal || 0,
@@ -92,28 +135,41 @@ export class OrdersService {
       total: createDto.total || 0,
     });
 
-    const savedOrder = await this.orderRepository.save(order);
+    return this.orderRepository.save(order);
+  }
 
-    // Intentar obtener el número de WhatsApp del marketplace config
-    let whatsapp: string | null = null;
+  private async getMarketplaceWhatsapp(tenantId: string): Promise<string | null> {
     try {
       const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
       const response = await fetch(`${authorizaUrl}/api/contracts/tenant/${tenantId}`);
       if (response.ok) {
         const contract = await response.json();
         if (contract.marketplaceConfig?.whatsapp) {
-          whatsapp = contract.marketplaceConfig.whatsapp;
+          return contract.marketplaceConfig.whatsapp;
         }
       }
     } catch (error) {
       console.error('Error obteniendo config de marketplace:', error);
     }
+    return null;
+  }
 
-    return {
-      message: 'Pedido creado exitosamente desde marketplace',
-      order: savedOrder,
-      ...(whatsapp && { whatsapp }),
-    };
+  /** Best-effort: registra/actualiza al comprador de invitado como cliente
+   * potencial en Authoriza (pendiente de registro), scoped al tenant de esta
+   * tienda. No lanza si falla — el pedido ya se guardó igual. */
+  private async registerPotentialCustomer(createDto: CreateMarketplaceOrderDto): Promise<void> {
+    const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
+    await fetch(`${authorizaUrl}/api/potential-users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: createDto.customerEmail,
+        name: createDto.customerName,
+        phone: createDto.customerPhone,
+        sourceApplication: 'Inout',
+        sourceTenantId: createDto.tenantId,
+      }),
+    });
   }
 
   async findAll(tenantId: string) {
