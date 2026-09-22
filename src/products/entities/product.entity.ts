@@ -54,6 +54,11 @@ export class Product {
   @Column({ type: 'int', nullable: true })
   intCategoryId: number;
 
+  /** Opcional: si aparece en el catálogo del MarketPlace del tenant. Por
+   * defecto true para no cambiar el comportamiento de productos existentes. */
+  @Column({ type: 'boolean', nullable: false, default: true })
+  blnMarketplaceVisible: boolean;
+
   @ManyToOne(() => Category)
   @JoinColumn({ name: 'intCategoryId' })
   category: Category;

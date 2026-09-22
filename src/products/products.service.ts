@@ -211,6 +211,44 @@ export class ProductsService {
     };
   }
 
+  /** Solo para el MarketPlace público: a diferencia de findAll() (panel
+   * administrativo, que debe ver todo), aquí se excluyen los productos que el
+   * tenant marcó como no visibles en su catálogo de venta online. */
+  async findMarketplaceCatalog(tenantId: string, page: number = 1, limit: number = 10) {
+    const [products, total] = await this.productRepository.findAndCount({
+      where: { strTenantId: tenantId, blnMarketplaceVisible: true },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
+
+    const productsWithImages = await Promise.all(
+      products.map(async (product) => {
+        const images = await this.imageRepository.find({
+          where: {
+            strEntityId: product.strId,
+            strEntityType: 'product',
+            strStatus: 'active'
+          }
+        });
+        return {
+          ...product,
+          images: images.map(img => ({
+            strId: img.strId,
+            strImageUrl: img.strImageUrl
+          }))
+        };
+      })
+    );
+
+    return {
+      data: productsWithImages,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async findOne(id: string, tenantId: string): Promise<Product> {
     const product = await this.productRepository.findOne({
       where: { strId: id, strTenantId: tenantId },

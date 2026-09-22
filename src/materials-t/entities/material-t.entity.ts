@@ -53,6 +53,11 @@ export class MaterialT {
   @Column({ type: 'int', nullable: true })
   categoryId: number;
 
+  /** Opcional: si aparece en el catálogo del MarketPlace del tenant. Por
+   * defecto true para no cambiar el comportamiento de materiales existentes. */
+  @Column({ type: 'boolean', nullable: false, default: true })
+  blnMarketplaceVisible: boolean;
+
   @ManyToOne(() => Category, category => category.materialsT)
   @JoinColumn({ name: 'categoryId' })
   category: Category;

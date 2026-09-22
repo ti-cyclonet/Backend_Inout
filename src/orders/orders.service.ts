@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
+import { Product } from '../products/entities/product.entity';
+import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
 
@@ -10,6 +12,10 @@ export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+    @InjectRepository(Product)
+    private productRepository: Repository<Product>,
+    @InjectRepository(InventoryMovement)
+    private inventoryMovementRepository: Repository<InventoryMovement>,
     private dataSource: DataSource,
   ) {}
 
@@ -114,28 +120,58 @@ export class OrdersService {
     };
   }
 
+  /** Los pedidos del marketplace nacen ya CONFIRMED (sin pasar por DRAFT), así
+   * que la reserva de stock que normalmente ocurre en updateStatus() al pasar
+   * a CONFIRMED debe hacerse aquí mismo, dentro de una transacción, para que
+   * quede reflejada de inmediato y no se pueda sobrevender. */
   private async saveMarketplaceOrder(
     createDto: CreateMarketplaceOrderDto,
     customer: { customerId: string | null; customerName: string },
   ) {
     const { tenantId } = createDto;
-    const orderCode = await this.generateOrderCode(tenantId);
 
-    const order = this.orderRepository.create({
-      tenantId,
-      orderCode,
-      status: OrderStatus.CONFIRMED,
-      customerId: customer.customerId,
-      customerName: customer.customerName,
-      items: createDto.items,
-      notes: createDto.notes || null,
-      subtotal: createDto.subtotal || 0,
-      tax: createDto.tax || 0,
-      discount: 0,
-      total: createDto.total || 0,
+    return this.dataSource.transaction(async (manager) => {
+      for (const item of createDto.items) {
+        if (!item.productId) continue;
+        const product = await manager.findOne(Product, {
+          where: { strId: item.productId, strTenantId: tenantId },
+        });
+        if (!product) {
+          throw new NotFoundException(`Producto ${item.productName} no encontrado`);
+        }
+        const available =
+          parseFloat(product.ingQuantity.toString()) - parseFloat((product.ingReservedStock || 0).toString());
+        if (available < item.quantity) {
+          throw new BadRequestException(`Stock insuficiente de "${product.strName}"`);
+        }
+      }
+
+      const orderCode = await this.generateOrderCode(tenantId);
+      const order = manager.create(Order, {
+        tenantId,
+        orderCode,
+        status: OrderStatus.CONFIRMED,
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        items: createDto.items,
+        notes: createDto.notes || null,
+        subtotal: createDto.subtotal || 0,
+        tax: createDto.tax || 0,
+        discount: 0,
+        total: createDto.total || 0,
+      });
+      const savedOrder = await manager.save(order);
+
+      for (const item of createDto.items) {
+        if (!item.productId) continue;
+        await manager.query(
+          `UPDATE manufacturing.products SET "ingReservedStock" = COALESCE("ingReservedStock", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
+          [item.quantity, item.productId, tenantId],
+        );
+      }
+
+      return savedOrder;
     });
-
-    return this.orderRepository.save(order);
   }
 
   private async getMarketplaceWhatsapp(tenantId: string): Promise<string | null> {
@@ -204,6 +240,7 @@ export class OrdersService {
 
   async updateStatus(id: string, tenantId: string, newStatus: OrderStatus) {
     const order = await this.findOne(id, tenantId);
+    const previousStatus = order.status;
 
     // Validar transiciones permitidas
     const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
@@ -230,7 +267,9 @@ export class OrdersService {
         );
       }
 
-      // Reservar stock de productos al confirmar
+      // Reservar stock de productos al confirmar (solo aplica a pedidos
+      // creados por el panel, que nacen en DRAFT; los de marketplace ya se
+      // reservan en saveMarketplaceOrder() porque nacen directo en CONFIRMED)
       for (const item of order.items) {
         if (item.productId) {
           await this.dataSource.query(
@@ -241,8 +280,9 @@ export class OrdersService {
       }
     }
 
-    // Liberar stock reservado si se cancela un pedido confirmado
-    if (newStatus === OrderStatus.CANCELLED && order.status !== OrderStatus.DRAFT) {
+    // Liberar stock reservado si se cancela un pedido que aún no fue entregado
+    // (si ya fue DELIVERED, la reserva ya se liberó al entregar — ver abajo)
+    if (newStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.DRAFT && previousStatus !== OrderStatus.DELIVERED) {
       for (const item of (order.items || [])) {
         if (item.productId) {
           await this.dataSource.query(
@@ -253,13 +293,54 @@ export class OrdersService {
       }
     }
 
-    // Liberar reserva cuando se entrega (ya se descontó del stock real)
+    // Cancelar un pedido ya entregado: el stock real ya salió del inventario,
+    // hay que devolverlo (reversa) en vez de tocar la reserva.
+    if (newStatus === OrderStatus.CANCELLED && previousStatus === OrderStatus.DELIVERED) {
+      for (const item of (order.items || [])) {
+        if (item.productId) {
+          await this.dataSource.query(
+            `UPDATE manufacturing.products SET "ingQuantity" = COALESCE("ingQuantity", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
+            [item.quantity, item.productId, tenantId]
+          );
+          await this.inventoryMovementRepository.save(
+            this.inventoryMovementRepository.create({
+              strTenantId: tenantId,
+              strProductId: item.productId,
+              strType: 'IN',
+              strReason: 'ADJUSTMENT',
+              fltQuantity: item.quantity,
+              fltUnitPrice: item.unitPrice,
+              strReferenceId: order.id,
+              strNotes: `Cancelación de pedido entregado ${order.orderCode}`,
+              dtmDate: new Date(),
+            }),
+          );
+        }
+      }
+    }
+
+    // Al entregar: descuenta el stock real (sale del inventario), libera la
+    // reserva y registra la salida en el Kardex — antes solo se liberaba la
+    // reserva y el stock real nunca bajaba.
     if (newStatus === OrderStatus.DELIVERED) {
       for (const item of (order.items || [])) {
         if (item.productId) {
           await this.dataSource.query(
-            `UPDATE manufacturing.products SET "ingReservedStock" = GREATEST(0, COALESCE("ingReservedStock", 0) - $1) WHERE "strId" = $2 AND "strTenantId" = $3`,
+            `UPDATE manufacturing.products SET "ingQuantity" = GREATEST(0, COALESCE("ingQuantity", 0) - $1), "ingReservedStock" = GREATEST(0, COALESCE("ingReservedStock", 0) - $1) WHERE "strId" = $2 AND "strTenantId" = $3`,
             [item.quantity, item.productId, tenantId]
+          );
+          await this.inventoryMovementRepository.save(
+            this.inventoryMovementRepository.create({
+              strTenantId: tenantId,
+              strProductId: item.productId,
+              strType: 'OUT',
+              strReason: 'SALE',
+              fltQuantity: item.quantity,
+              fltUnitPrice: item.unitPrice,
+              strReferenceId: order.id,
+              strNotes: `Pedido ${order.orderCode}`,
+              dtmDate: new Date(),
+            }),
           );
         }
       }
