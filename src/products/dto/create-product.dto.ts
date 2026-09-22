@@ -32,6 +32,10 @@ export class CreateProductDto {
   @IsOptional()
   fltCost?: number;
 
+  @IsNumber()
+  @IsOptional()
+  fltDirectLaborCost?: number;
+
   @IsString()
   strMeasurementUnit: string;
 

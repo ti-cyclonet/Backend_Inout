@@ -325,6 +325,10 @@ export class ProductsService {
         directCost += ing.quantityInStockUnit * ing.unitPrice;
       });
 
+      // Mano de obra DIRECTA (opcional, por unidad): costo trazable a este
+      // producto puntual, distinto de la nómina indirecta del overhead.
+      directCost += parseFloat((product.fltDirectLaborCost || 0).toString());
+
       // Calcular costo indirecto por unidad (distribución de overhead mensual)
       let indirectCostPerUnit = 0;
       let overheadBreakdown = null;

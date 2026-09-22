@@ -24,6 +24,12 @@ export class Product {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   fltCost: number;
 
+  /** Mano de obra DIRECTA por unidad (opcional): costo trazable a este
+   * producto específico (ej. horas de un operario dedicadas a fabricarlo),
+   * distinto de la nómina indirecta que ya se prorratea vía overhead. */
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  fltDirectLaborCost: number;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   ingQuantity: number;
 
