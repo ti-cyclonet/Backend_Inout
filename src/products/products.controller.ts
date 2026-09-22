@@ -17,9 +17,11 @@ export class ProductsController {
     return this.productsService.findAllProducts(+page || 1, +limit || 50);
   }
 
+  /** Ruta pública consumida por el MarketPlace del tenant: solo productos
+   * marcados como visibles en ese catálogo (ver findMarketplaceCatalog). */
   @Get('tenant/:tenantId')
   findByTenant(@Param('tenantId') tenantId: string, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.productsService.findAll(tenantId, +page || 1, +limit || 10);
+    return this.productsService.findMarketplaceCatalog(tenantId, +page || 1, +limit || 10);
   }
 
   @UseGuards(JwtAuthGuard, LimitEnforcementGuard)

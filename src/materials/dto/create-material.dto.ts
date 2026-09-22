@@ -50,4 +50,8 @@ export class CreateMaterialDto {
 
   @IsOptional()
   blnBulkUpload?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  blnMarketplaceVisible?: boolean;
 }

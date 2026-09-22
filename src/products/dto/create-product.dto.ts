@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CompositionTwoDto {
@@ -72,4 +72,8 @@ export class CreateProductDto {
 
   @IsNumber()
   categoryId: number;
+
+  @IsBoolean()
+  @IsOptional()
+  blnMarketplaceVisible?: boolean;
 }
