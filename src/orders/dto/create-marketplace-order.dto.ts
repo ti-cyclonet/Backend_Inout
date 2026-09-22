@@ -37,6 +37,13 @@ export class CreateMarketplaceOrderDto {
   @IsString()
   customerAddress?: string;
 
+  /** Opcional: si se da, el checkout de invitado queda registrado en
+   * Authoriza como cliente potencial (pendiente de registro), no solo como
+   * texto libre dentro del pedido. */
+  @IsOptional()
+  @IsString()
+  customerEmail?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => MarketplaceOrderItemDto)
