@@ -38,6 +38,10 @@ export class CreateMaterialTDto {
 
   @IsString()
   @IsOptional()
+  strDischargeUnit?: string;
+
+  @IsString()
+  @IsOptional()
   dtmCreationDate?: string;
 
   @IsString()

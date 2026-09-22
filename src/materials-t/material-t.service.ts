@@ -18,6 +18,7 @@ import {
   import { validate as isUUID } from 'uuid';
   import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
   import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
+  import { areUnitsCompatible, convertUnits } from 'src/common/utils/unit-conversion';
   
   @Injectable()
   export class MaterialsTService {
@@ -50,6 +51,13 @@ import {
     ) {}
   
     async create(createMaterialDto: CreateMaterialTDto, tenantId: string) {
+      const anyDto = createMaterialDto as any;
+      if (!areUnitsCompatible(anyDto.strUnitMeasure, anyDto.strDischargeUnit)) {
+        throw new BadRequestException(
+          `La unidad de descarga ("${anyDto.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${anyDto.strUnitMeasure}") para poder convertir entre ellas.`,
+        );
+      }
+
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
@@ -134,10 +142,18 @@ import {
           // Update stock of component materials
           for (const comp of materialData.composition) {
             const componentMaterial = await queryRunner.manager.findOne(Material, { where: { strId: comp.componentMaterialId } });
-            
+
+            // comp.quantity viene en la unidad de DESCARGA del material (la
+            // que se usa al armar la receta); el stock (ingQuantity) vive en
+            // su unidad de MEDIDA (la de compra). Se convierte antes de
+            // descontar para que "15 g" no le reste 15 kg a un material que
+            // se compra en kilos.
+            const dischargeUnit = componentMaterial?.strDischargeUnit || componentMaterial?.strUnitMeasure;
+            const quantityInStockUnit = convertUnits(comp.quantity, dischargeUnit, componentMaterial?.strUnitMeasure);
+
             await queryRunner.manager.query(
               `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
-              [comp.quantity, comp.componentMaterialId]
+              [quantityInStockUnit, comp.componentMaterialId]
             );
 
             // Register inventory movement (OUT)
@@ -146,7 +162,7 @@ import {
               strMaterialId: comp.componentMaterialId,
               strType: 'OUT',
               strReason: 'TRANSFORMED_MATERIAL',
-              fltQuantity: comp.quantity,
+              fltQuantity: quantityInStockUnit,
               fltUnitPrice: componentMaterial?.fltPrice || 0,
               strReferenceId: savedMaterial.strId,
               strNotes: `Salida para material compuesto: ${savedMaterial.strName}`,
@@ -284,7 +300,13 @@ import {
         if (!material) {
           throw new NotFoundException(`Material con id '${id}' no encontrado`);
         }
-  
+
+        if (!areUnitsCompatible(material.strUnitMeasure, material.strDischargeUnit)) {
+          throw new BadRequestException(
+            `La unidad de descarga ("${material.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${material.strUnitMeasure}") para poder convertir entre ellas.`,
+          );
+        }
+
         material = await queryRunner.manager.save(material);
 
         // Handle images if provided
@@ -357,22 +379,27 @@ import {
 
               if (additionalQty > 0) {
                 const componentMaterial = await queryRunner.manager.findOne(Material, { where: { strId: newComp.componentMaterialId } });
-                
+
+                // additionalQty está en la unidad de DESCARGA del componente; convertir
+                // a su unidad de MEDIDA (la del stock) antes de descontar.
+                const dischargeUnit = componentMaterial?.strDischargeUnit || componentMaterial?.strUnitMeasure;
+                const additionalQtyInStockUnit = convertUnits(additionalQty, dischargeUnit, componentMaterial?.strUnitMeasure);
+
                 await queryRunner.manager.query(
                   `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
-                  [additionalQty, newComp.componentMaterialId]
+                  [additionalQtyInStockUnit, newComp.componentMaterialId]
                 );
 
                 await queryRunner.manager.query(
-                  `INSERT INTO manufacturing.inventory_movements 
-                   ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate") 
+                  `INSERT INTO manufacturing.inventory_movements
+                   ("strTenantId", "strMaterialId", "strType", "strReason", "fltQuantity", "fltUnitPrice", "strReferenceId", "strNotes", "dtmDate")
                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                   [
                     material.strTenantId,
                     newComp.componentMaterialId,
                     'OUT',
                     'TRANSFORMED_MATERIAL',
-                    additionalQty,
+                    additionalQtyInStockUnit,
                     componentMaterial?.fltPrice || 0,
                     id,
                     `Salida adicional para material compuesto: ${material.strName}`,
