@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Headers, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { LimitEnforcementService } from './limit-enforcement.service';
@@ -12,10 +12,14 @@ export class UsageStatusController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  async getUsageStatus(@GetTenantId() tenantId: string) {
+  async getUsageStatus(@GetTenantId() tenantId: string, @Headers('authorization') authorization: string) {
     // 1. Fetch limits from Authoriza
     const limitsResponse =
       await this.limitEnforcementService.fetchLimits(tenantId);
+
+    // Los clientes (rol clienteInout) se asignan en Authoriza, no en InOut:
+    // sincronizar su contador con el conteo real antes de responder.
+    await this.limitEnforcementService.syncClientsCounter(tenantId, authorization);
 
     // 2. Get current counters
     const counters =
@@ -83,8 +87,8 @@ export class UsageStatusController {
    */
   @UseGuards(JwtAuthGuard)
   @Post('recalibrate')
-  async recalibrateCounters(@GetTenantId() tenantId: string) {
-    return this.limitEnforcementService.recalibrateCounters(tenantId);
+  async recalibrateCounters(@GetTenantId() tenantId: string, @Headers('authorization') authorization: string) {
+    return this.limitEnforcementService.recalibrateCounters(tenantId, authorization);
   }
 
   /**

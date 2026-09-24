@@ -256,10 +256,51 @@ export class LimitEnforcementService {
   }
 
   /**
+   * Los clientes de InOut ya no viven en la tabla local `customers`: son
+   * usuarios de Authoriza con rol `clienteInout` en el contrato de InOut, y se
+   * asignan directamente en Authoriza (que además hace cumplir el tope
+   * nClientes). Por eso el contador local nunca subía. Devuelve cuántos hay
+   * asignados, o null si Authoriza no respondió (se conserva el contador).
+   */
+  async countClientsFromAuthoriza(tenantId: string, authorization?: string): Promise<number | null> {
+    if (!authorization) return null;
+    try {
+      const { contractId } = await this.fetchLimits(tenantId);
+      if (!contractId) return null;
+      const response = await firstValueFrom(
+        this.httpService.get<any[]>(`${this.authorizaApiUrl}/api/user-roles/availability/${contractId}`, {
+          headers: { Authorization: authorization },
+        }),
+      );
+      const clientRole = (response.data || []).find((a: any) => a.role?.strName === 'clienteInout');
+      return clientRole ? Number(clientRole.assigned) || 0 : 0;
+    } catch (error) {
+      this.logger.warn(`No se pudo contar clientes en Authoriza para ${tenantId}: ${error?.response?.status ?? ''} ${error.message}`);
+      return null;
+    }
+  }
+
+  /** Sincroniza el contador nClientes con el conteo real de Authoriza. */
+  async syncClientsCounter(tenantId: string, authorization?: string): Promise<{ previousCount: number; actualCount: number } | null> {
+    const actualCount = await this.countClientsFromAuthoriza(tenantId, authorization);
+    if (actualCount === null) return null;
+    let counter = await this.usageCounterRepository.findOne({ where: { tenantId, variableName: 'nClientes' } });
+    const previousCount = counter?.currentCount ?? 0;
+    if (!counter) {
+      counter = this.usageCounterRepository.create({ tenantId, variableName: 'nClientes', currentCount: actualCount });
+      await this.usageCounterRepository.save(counter);
+    } else if (previousCount !== actualCount) {
+      counter.currentCount = actualCount;
+      await this.usageCounterRepository.save(counter);
+    }
+    return { previousCount, actualCount };
+  }
+
+  /**
    * Recalibrate counters for a tenant by counting actual records in the database.
    * This fixes any drift between the counter and the real number of records.
    */
-  async recalibrateCounters(tenantId: string): Promise<{
+  async recalibrateCounters(tenantId: string, authorization?: string): Promise<{
     tenantId: string;
     recalibrated: { variableName: string; previousCount: number; actualCount: number }[];
   }> {
@@ -271,7 +312,6 @@ export class LimitEnforcementService {
       nMaterialesT: `SELECT COUNT(*) as count FROM manufacturing."materials-t" WHERE "strTenantId" = $1`,
       nProductos: `SELECT COUNT(*) as count FROM manufacturing.products WHERE "strTenantId" = $1`,
       nLotes: `SELECT COUNT(*) as count FROM manufacturing.product_productions WHERE "strTenantId" = $1`,
-      nClientes: `SELECT COUNT(*) as count FROM manufacturing.customers WHERE "tenantId" = $1 AND "isActive" = true`,
       nVentas: `SELECT COUNT(*) as count FROM manufacturing.sales WHERE "strTenantId" = $1`,
       nSesionesCap: `SELECT COUNT(*) as count FROM manufacturing.training_sessions WHERE "strTenantId" = $1`,
       nProveedores: `SELECT COUNT(*) as count FROM manufacturing.suppliers WHERE "strTenantId" = $1 AND "strStatus" = 'active'`,
@@ -309,6 +349,12 @@ export class LimitEnforcementService {
           `Could not recalibrate ${variableName} for tenant ${tenantId}: ${error.message}`,
         );
       }
+    }
+
+    // nClientes se cuenta en Authoriza (ver countClientsFromAuthoriza)
+    const clients = await this.syncClientsCounter(tenantId, authorization);
+    if (clients && clients.previousCount !== clients.actualCount) {
+      recalibrated.push({ variableName: 'nClientes', ...clients });
     }
 
     return { tenantId, recalibrated };
