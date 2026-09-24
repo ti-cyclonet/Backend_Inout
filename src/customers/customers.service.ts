@@ -19,7 +19,11 @@ export class CustomersService {
     private readonly httpService: HttpService,
     private readonly limitEnforcementService: LimitEnforcementService,
   ) {
-    this.authorizaApiUrl = this.configService.get<string>('AUTHORIZA_API_URL') || 'http://localhost:3000/api';
+    // AUTHORIZA_API_URL se configura SIN el prefijo global `/api` de Authoriza
+    // (ver .env y docker-compose.prod.yml), igual que en el resto de servicios.
+    // Se normaliza por si alguna vez viene con él, para no duplicarlo.
+    const base = (this.configService.get<string>('AUTHORIZA_API_URL') || 'http://localhost:3000').replace(/\/+$/, '');
+    this.authorizaApiUrl = base.endsWith('/api') ? base : `${base}/api`;
   }
 
   async create(dto: CreateCustomerDto, tenantId: string): Promise<Customer> {
@@ -64,8 +68,8 @@ export class CustomersService {
    * método reemplaza la lectura de la tabla `customer` local por una consulta
    * a Authoriza, filtrando los dependientes del tenant por ese rol.
    */
-  async findByTenantId(tenantId: string): Promise<any[]> {
-    return this.findClientsFromAuthoriza(tenantId);
+  async findByTenantId(tenantId: string, authorization?: string): Promise<any[]> {
+    return this.findClientsFromAuthoriza(tenantId, authorization);
   }
 
   async findById(id: string): Promise<Customer> {
@@ -80,17 +84,22 @@ export class CustomersService {
     return customer;
   }
 
-  async getCustomersWithDetails(tenantId: string): Promise<any[]> {
+  async getCustomersWithDetails(tenantId: string, authorization?: string): Promise<any[]> {
     // Ya vienen con todos los detalles de BasicData resueltos desde Authoriza.
-    return this.findClientsFromAuthoriza(tenantId);
+    return this.findClientsFromAuthoriza(tenantId, authorization);
   }
 
-  private async findClientsFromAuthoriza(tenantId: string): Promise<any[]> {
+  private async findClientsFromAuthoriza(tenantId: string, authorization?: string): Promise<any[]> {
     try {
       const contractId = await this.getInoutContractId(tenantId);
       const query = contractId ? `?contractId=${contractId}` : '';
+      // /user-dependencies está protegido con JwtAuthGuard en Authoriza: sin
+      // reenviar el token del usuario (mismo JWT_SECRET) responde 401 y la
+      // lista quedaba vacía en silencio.
       const response = await firstValueFrom(
-        this.httpService.get(`${this.authorizaApiUrl}/user-dependencies/principal/${tenantId}/roles${query}`),
+        this.httpService.get(`${this.authorizaApiUrl}/user-dependencies/principal/${tenantId}/roles${query}`, {
+          headers: authorization ? { Authorization: authorization } : {},
+        }),
       );
       const dependents: any[] = response.data || [];
 
@@ -98,7 +107,12 @@ export class CustomersService {
         .filter((dep) => (dep.roles || []).some((r: any) => r.name === 'clienteInout'))
         .map((dep) => this.mapAuthorizaClientToCustomer(dep, tenantId));
     } catch (error) {
-      console.error('Error obteniendo clientes (rol clienteInout) desde Authoriza:', error?.message);
+      console.error(
+        'Error obteniendo clientes (rol clienteInout) desde Authoriza:',
+        error?.response?.status,
+        error?.config?.url,
+        error?.message,
+      );
       return [];
     }
   }
