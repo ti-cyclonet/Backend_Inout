@@ -27,6 +27,17 @@ export class Order {
   @Column({ type: 'varchar', length: 255, nullable: true })
   customerName: string;
 
+  // Contacto del comprador del MarketPlace (antes solo quedaba dentro de
+  // customerName para invitados y se perdía en pedidos con sesión iniciada).
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  customerPhone: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  customerEmail: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  customerAddress: string;
+
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.DRAFT })
   status: OrderStatus;
 

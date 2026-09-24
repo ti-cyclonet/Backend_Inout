@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
@@ -29,6 +29,17 @@ export class OrdersMarketplaceController {
    * clienteInout no está en el allowlist de roles internos de InOut y no
    * debe estarlo — este endpoint no es del panel administrativo.
    */
+  /** Datos de su último pedido en esta tienda, para precargar el checkout. */
+  @UseGuards(JwtAuthGuard)
+  @Get('marketplace/me/last-contact')
+  lastMarketplaceContact(@Req() req: Request) {
+    const user = req.user as any;
+    if (user?.role !== 'clienteInout' || !user?.tenantId) {
+      throw new ForbiddenException('Solo cuentas de cliente.');
+    }
+    return this.ordersService.findLastMarketplaceContact(user.tenantId, user.id);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('marketplace/authenticated')
   createFromMarketplaceAuthenticated(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {

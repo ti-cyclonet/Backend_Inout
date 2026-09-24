@@ -97,11 +97,11 @@ export class OrdersService {
       customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
     }, meta);
 
-    if (createDto.customerEmail) {
-      this.registerPotentialCustomer(createDto).catch((err) =>
-        console.error('No se pudo registrar el cliente potencial en Authoriza:', err?.message),
-      );
-    }
+    // Todo invitado queda como CLIENTE POTENCIAL en Authoriza (potential_users),
+    // con o sin correo, para poder invitarlo luego a usar la aplicación.
+    this.registerPotentialCustomer(createDto).catch((err) =>
+      console.error('No se pudo registrar el cliente potencial en Authoriza:', err?.message),
+    );
 
     const whatsapp = await this.getMarketplaceWhatsapp(createDto.tenantId);
     return {
@@ -161,6 +161,9 @@ export class OrdersService {
         status: OrderStatus.CONFIRMED,
         customerId: customer.customerId,
         customerName: customer.customerName,
+        customerPhone: createDto.customerPhone?.trim() || null,
+        customerEmail: createDto.customerEmail?.trim() || null,
+        customerAddress: createDto.customerAddress?.trim() || null,
         items: createDto.items,
         notes: createDto.notes || null,
         subtotal: createDto.subtotal || 0,
@@ -198,17 +201,34 @@ export class OrdersService {
    * tienda. No lanza si falla — el pedido ya se guardó igual. */
   private async registerPotentialCustomer(createDto: CreateMarketplaceOrderDto): Promise<void> {
     const authorizaUrl = process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000';
-    await fetch(`${authorizaUrl}/api/potential-users`, {
+    const res = await fetch(`${authorizaUrl}/api/potential-users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: createDto.customerEmail,
+        email: createDto.customerEmail?.trim() || undefined,
         name: createDto.customerName,
         phone: createDto.customerPhone,
+        address: createDto.customerAddress?.trim() || undefined,
         sourceApplication: 'Inout',
         sourceTenantId: createDto.tenantId,
       }),
     });
+    if (!res.ok) throw new Error(`Authoriza respondió ${res.status}`);
+  }
+
+  /** Últimos datos de contacto/entrega que usó un cliente con sesión en esta
+   * tienda, para precargar su siguiente pedido. */
+  async findLastMarketplaceContact(tenantId: string, customerId: string) {
+    const last = await this.orderRepository.findOne({
+      where: { tenantId, customerId },
+      order: { createdAt: 'DESC' },
+    });
+    if (!last) return null;
+    return {
+      customerName: last.customerName || null,
+      customerPhone: last.customerPhone || null,
+      customerAddress: last.customerAddress || null,
+    };
   }
 
   async findAll(tenantId: string) {
