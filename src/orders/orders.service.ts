@@ -6,6 +6,7 @@ import { Product } from '../products/entities/product.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
+import { assertStockAvailable } from '../common/stock-availability';
 
 @Injectable()
 export class OrdersService {
@@ -131,20 +132,7 @@ export class OrdersService {
     const { tenantId } = createDto;
 
     return this.dataSource.transaction(async (manager) => {
-      for (const item of createDto.items) {
-        if (!item.productId) continue;
-        const product = await manager.findOne(Product, {
-          where: { strId: item.productId, strTenantId: tenantId },
-        });
-        if (!product) {
-          throw new NotFoundException(`Producto ${item.productName} no encontrado`);
-        }
-        const available =
-          parseFloat(product.ingQuantity.toString()) - parseFloat((product.ingReservedStock || 0).toString());
-        if (available < item.quantity) {
-          throw new BadRequestException(`Stock insuficiente de "${product.strName}"`);
-        }
-      }
+      await assertStockAvailable(manager, tenantId, createDto.items);
 
       const orderCode = await this.generateOrderCode(tenantId);
       const order = manager.create(Order, {
@@ -238,9 +226,15 @@ export class OrdersService {
     return { data: orders };
   }
 
-  async updateStatus(id: string, tenantId: string, newStatus: OrderStatus) {
+  async updateStatus(id: string, tenantId: string, newStatus: OrderStatus, reason?: string) {
     const order = await this.findOne(id, tenantId);
     const previousStatus = order.status;
+
+    // Toda cancelación debe quedar justificada (se valida antes de tocar stock)
+    const cancellationReason = (reason || '').trim();
+    if (newStatus === OrderStatus.CANCELLED && cancellationReason.length < 5) {
+      throw new BadRequestException('Debes indicar el motivo de la cancelación (mínimo 5 caracteres)');
+    }
 
     // Validar transiciones permitidas
     const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
@@ -269,15 +263,20 @@ export class OrdersService {
 
       // Reservar stock de productos al confirmar (solo aplica a pedidos
       // creados por el panel, que nacen en DRAFT; los de marketplace ya se
-      // reservan en saveMarketplaceOrder() porque nacen directo en CONFIRMED)
-      for (const item of order.items) {
-        if (item.productId) {
-          await this.dataSource.query(
-            `UPDATE manufacturing.products SET "ingReservedStock" = COALESCE("ingReservedStock", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
-            [item.quantity, item.productId, tenantId]
-          );
+      // reservan en saveMarketplaceOrder() porque nacen directo en CONFIRMED).
+      // Un borrador puede crearse sin stock (sirve de cotización), pero NO se
+      // confirma si no hay stock disponible para todos sus ítems.
+      await this.dataSource.transaction(async (manager) => {
+        await assertStockAvailable(manager, tenantId, order.items);
+        for (const item of order.items) {
+          if (item.productId) {
+            await manager.query(
+              `UPDATE manufacturing.products SET "ingReservedStock" = COALESCE("ingReservedStock", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
+              [item.quantity, item.productId, tenantId]
+            );
+          }
         }
-      }
+      });
     }
 
     // Liberar stock reservado si se cancela un pedido que aún no fue entregado
@@ -347,6 +346,10 @@ export class OrdersService {
     }
 
     order.status = newStatus;
+    if (newStatus === OrderStatus.CANCELLED) {
+      order.cancellationReason = cancellationReason;
+      order.cancelledAt = new Date();
+    }
     const updatedOrder = await this.orderRepository.save(order);
 
     return { message: 'Estado actualizado exitosamente', order: updatedOrder };

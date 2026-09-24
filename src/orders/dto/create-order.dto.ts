@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsDateString, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsDateString, IsEnum, MaxLength } from 'class-validator';
 import { OrderStatus } from '../entities/order.entity';
 
 export class CreateOrderDto {
@@ -42,4 +42,10 @@ export class CreateOrderDto {
 export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus)
   status: OrderStatus;
+
+  /** Obligatorio cuando status = CANCELLED. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }

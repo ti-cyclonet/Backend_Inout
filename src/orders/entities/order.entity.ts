@@ -39,6 +39,13 @@ export class Order {
   @Column({ type: 'date', nullable: true })
   deliveryDate: Date;
 
+  /** Motivo obligatorio que el usuario escribe al cancelar el pedido. */
+  @Column({ type: 'text', nullable: true })
+  cancellationReason: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  cancelledAt: Date;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal: number;
 
