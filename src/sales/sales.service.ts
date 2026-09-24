@@ -9,6 +9,7 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { BusinessParamsService } from '../config/business-params.service';
+import { assertStockAvailable, StockLine } from '../common/stock-availability';
 
 @Injectable()
 export class SalesService {
@@ -73,17 +74,31 @@ export class SalesService {
     try {
       const { strProductId, dtmDate, fltQuantity, fltUnitPrice, customerName } = createDto;
 
-      const product = await queryRunner.manager.findOne(Product, {
-        where: { strId: strProductId, strTenantId: tenantId }
-      });
+      // La venta puede traer varios ítems (items[]); antes solo se validaba y
+      // descontaba el primero (strProductId/fltQuantity) y el resto salía sin
+      // control de stock. Si items[] no trae productId (clientes viejos), se
+      // conserva el comportamiento de un solo producto.
+      const itemLines: (StockLine & { unitPrice: number })[] = Array.isArray(createDto.items)
+        ? createDto.items
+            .filter((i: any) => i?.productId)
+            .map((i: any) => ({
+              productId: i.productId,
+              quantity: Number(i.quantity) || 0,
+              productName: i.productName || i.product,
+              unitPrice: Number(i.unitPrice) || 0,
+            }))
+        : [];
+      const lines = itemLines.length > 0
+        ? itemLines
+        : [{ productId: strProductId, quantity: Number(fltQuantity) || 0, unitPrice: Number(fltUnitPrice) || 0 }];
 
-      if (!product) {
-        throw new NotFoundException('Producto no encontrado');
+      if (lines.some((l) => l.quantity <= 0)) {
+        throw new BadRequestException('La cantidad de cada producto debe ser mayor a cero');
       }
 
-      if (parseFloat(product.ingQuantity.toString()) < parseFloat(fltQuantity.toString())) {
-        throw new BadRequestException('Stock insuficiente del producto');
-      }
+      // Valida contra el stock DISPONIBLE (descontando lo reservado por
+      // pedidos confirmados) y bloquea las filas hasta el commit.
+      const products = await assertStockAvailable(queryRunner.manager, tenantId, lines);
 
       // Obtener parámetros de negocio del período activo
       const params = await this.businessParamsService.getParams(tenantId);
@@ -139,22 +154,24 @@ export class SalesService {
       });
       const savedSale = await queryRunner.manager.save(sale);
 
-      // Descontar stock del producto
-      product.ingQuantity = parseFloat(product.ingQuantity.toString()) - parseFloat(fltQuantity.toString());
-      await queryRunner.manager.save(product);
+      // Descontar stock y registrar la salida de CADA ítem
+      for (const line of lines) {
+        const product = products.get(line.productId)!;
+        product.ingQuantity = parseFloat(product.ingQuantity.toString()) - line.quantity;
+        await queryRunner.manager.save(product);
 
-      // Registrar movimiento de producto
-      await queryRunner.manager.save(InventoryMovement, {
-        strTenantId: tenantId,
-        strProductId: strProductId,
-        strType: 'OUT',
-        strReason: 'SALE',
-        fltQuantity: fltQuantity,
-        fltUnitPrice: fltUnitPrice,
-        strReferenceId: savedSale.strId,
-        strNotes: `Venta ${invoiceCode}`,
-        dtmDate: dtmDate
-      });
+        await queryRunner.manager.save(InventoryMovement, {
+          strTenantId: tenantId,
+          strProductId: line.productId,
+          strType: 'OUT',
+          strReason: 'SALE',
+          fltQuantity: line.quantity,
+          fltUnitPrice: line.unitPrice,
+          strReferenceId: savedSale.strId,
+          strNotes: `Venta ${invoiceCode}`,
+          dtmDate: dtmDate
+        });
+      }
 
       await queryRunner.commitTransaction();
 
