@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -18,6 +19,7 @@ import { validate as isUUID } from 'uuid';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 import { areUnitsCompatible } from 'src/common/utils/unit-conversion';
+import { assertResaleConfig } from '../common/resale';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -51,6 +53,7 @@ export class MaterialsService {
           `La unidad de descarga ("${createMaterialDto.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${createMaterialDto.strUnitMeasure}") para poder convertir entre ellas.`,
         );
       }
+      assertResaleConfig(createMaterialDto);
 
       // 1. Generar código autoincremental
       const code = await this.generateMaterialCode(tenantId);
@@ -250,6 +253,7 @@ export class MaterialsService {
           `La unidad de descarga ("${material.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${material.strUnitMeasure}") para poder convertir entre ellas.`,
         );
       }
+      assertResaleConfig(material);
 
       material = await queryRunner.manager.save(material);
 
@@ -349,6 +353,8 @@ export class MaterialsService {
   }
 
   private handleDBException(error: any) {
+    // Errores de validación ya tipados (400/404) no deben volverse un 500 genérico
+    if (error instanceof HttpException) throw error;
     if (error.code === '23505') throw new BadRequestException(error.detail);
     this.logger.error(error);
     throw new InternalServerErrorException(`Unexpected error, check server logs`);

@@ -13,6 +13,8 @@ import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 import { BusinessParamsService } from '../config/business-params.service';
 import { convertUnits } from 'src/common/utils/unit-conversion';
+import { MaterialT } from '../materials-t/entities/material-t.entity';
+import { mapResaleItem } from '../common/resale';
 
 @Injectable()
 export class ProductsService {
@@ -247,6 +249,39 @@ export class ProductsService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Materiales y materiales compuestos habilitados para REVENTA, con precio y
+   * stock expresados por presentación (ver mapResaleItem). onlyMarketplace
+   * limita a los marcados como visibles en el MarketPlace público; Ventas y
+   * Pedidos del panel ven todos los de reventa.
+   */
+  async findResaleItems(tenantId: string, onlyMarketplace = false) {
+    const where: any = { strTenantId: tenantId, blnForResale: true };
+    if (onlyMarketplace) where.blnMarketplaceVisible = true;
+
+    const [materials, materialsT] = await Promise.all([
+      this.materialRepository.find({ where, order: { strName: 'ASC' } }),
+      this.dataSource.getRepository(MaterialT).find({ where, order: { strName: 'ASC' } }),
+    ]);
+
+    const isActive = (m: { strStatus?: string }) => (m.strStatus || 'active').toLowerCase() === 'active';
+    const withImages = async (m: any, itemType: 'material' | 'material_t') => {
+      const images = await this.imageRepository.find({
+        where: {
+          strEntityId: m.strId,
+          strEntityType: itemType === 'material' ? 'material' : 'material-t',
+          strStatus: 'active',
+        },
+      });
+      return mapResaleItem(m, itemType, images.map((img) => ({ strId: img.strId, strImageUrl: img.strImageUrl })));
+    };
+
+    return Promise.all([
+      ...materials.filter(isActive).map((m) => withImages(m, 'material')),
+      ...materialsT.filter(isActive).map((m) => withImages(m, 'material_t')),
+    ]);
   }
 
   async findOne(id: string, tenantId: string): Promise<Product> {
