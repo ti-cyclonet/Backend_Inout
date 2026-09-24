@@ -47,6 +47,16 @@ export class Order {
   @Column({ type: 'timestamp', nullable: true })
   cancelledAt: Date;
 
+  /** Prueba de la aceptación de Términos y Tratamiento de Datos del comprador (MarketPlace). */
+  @Column({ type: 'jsonb', nullable: true })
+  consents: {
+    termsVersion: string;
+    habeasDataVersion: string;
+    acceptedAt: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+  } | null;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal: number;
 

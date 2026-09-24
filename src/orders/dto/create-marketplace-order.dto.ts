@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class MarketplaceOrderItemDto {
@@ -66,4 +66,21 @@ export class CreateMarketplaceOrderDto {
 
   @IsNumber()
   total: number;
+
+  // Aceptación de Términos y Condiciones y autorización de Tratamiento de
+  // Datos (Ley 1581/2012). Obligatoria también para invitados: igual
+  // entregan nombre, teléfono y dirección.
+  @IsBoolean()
+  acceptTerms: boolean;
+
+  @IsBoolean()
+  acceptHabeasData: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  termsVersion: string;
+
+  @IsString()
+  @IsNotEmpty()
+  habeasDataVersion: string;
 }

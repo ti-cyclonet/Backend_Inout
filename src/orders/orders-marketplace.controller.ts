@@ -8,10 +8,19 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class OrdersMarketplaceController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  /** Origen de la aceptación de términos/datos (se guarda con el pedido). */
+  private requestMeta(req: Request) {
+    const forwarded = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
+    return {
+      ipAddress: forwarded || req.ip || null,
+      userAgent: (req.headers['user-agent'] as string | undefined) || null,
+    };
+  }
+
   /** Checkout de invitado, sin sesión — sigue siendo la forma "por defecto" de comprar. */
   @Post('marketplace')
-  createFromMarketplace(@Body() createDto: CreateMarketplaceOrderDto) {
-    return this.ordersService.createFromMarketplace(createDto);
+  createFromMarketplace(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {
+    return this.ordersService.createFromMarketplace(createDto, this.requestMeta(req));
   }
 
   /**
@@ -35,6 +44,7 @@ export class OrdersMarketplaceController {
     return this.ordersService.createFromMarketplaceAuthenticated(
       { ...createDto, tenantId: user.tenantId },
       user.id,
+      this.requestMeta(req),
     );
   }
 }
