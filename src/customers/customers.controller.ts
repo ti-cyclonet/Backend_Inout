@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Headers, UseGuards, UseInterceptors } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
@@ -24,13 +24,13 @@ export class CustomersController {
   }
 
   @Get()
-  findByTenant(@GetTenantId() tenantId: string) {
-    return this.customersService.findByTenantId(tenantId);
+  findByTenant(@GetTenantId() tenantId: string, @Headers('authorization') authorization: string) {
+    return this.customersService.findByTenantId(tenantId, authorization);
   }
 
   @Get('with-details')
-  getCustomersWithDetails(@GetTenantId() tenantId: string) {
-    return this.customersService.getCustomersWithDetails(tenantId);
+  getCustomersWithDetails(@GetTenantId() tenantId: string, @Headers('authorization') authorization: string) {
+    return this.customersService.getCustomersWithDetails(tenantId, authorization);
   }
 
   @Get(':id')
