@@ -8,6 +8,12 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
 import { applyStockDelta, assertStockAvailable, movementTarget, resolveStockLines } from '../common/stock-availability';
 
+/** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
+export interface ConsentMeta {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -85,11 +91,11 @@ export class OrdersService {
    * obligatorio iniciar sesión para comprar. Si el comprador dio su correo,
    * además queda registrado en Authoriza como cliente potencial (best-effort,
    * no bloquea el pedido si esa llamada falla). */
-  async createFromMarketplace(createDto: CreateMarketplaceOrderDto) {
+  async createFromMarketplace(createDto: CreateMarketplaceOrderDto, meta: ConsentMeta = {}) {
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: null,
       customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
-    });
+    }, meta);
 
     if (createDto.customerEmail) {
       this.registerPotentialCustomer(createDto).catch((err) =>
@@ -107,11 +113,11 @@ export class OrdersService {
 
   /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
    * userId real de Authoriza en vez de solo un texto libre. */
-  async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string) {
+  async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: authUserId,
       customerName: createDto.customerName,
-    });
+    }, meta);
 
     const whatsapp = await this.getMarketplaceWhatsapp(createDto.tenantId);
     return {
@@ -128,8 +134,22 @@ export class OrdersService {
   private async saveMarketplaceOrder(
     createDto: CreateMarketplaceOrderDto,
     customer: { customerId: string | null; customerName: string },
+    meta: ConsentMeta,
   ) {
     const { tenantId } = createDto;
+
+    if (createDto.acceptTerms !== true || createDto.acceptHabeasData !== true) {
+      throw new BadRequestException(
+        'Debes aceptar los Términos y Condiciones y autorizar el tratamiento de tus datos personales para hacer el pedido.',
+      );
+    }
+    const consents = {
+      termsVersion: createDto.termsVersion,
+      habeasDataVersion: createDto.habeasDataVersion,
+      acceptedAt: new Date().toISOString(),
+      ipAddress: meta.ipAddress?.slice(0, 64) || null,
+      userAgent: meta.userAgent?.slice(0, 500) || null,
+    };
 
     return this.dataSource.transaction(async (manager) => {
       const resolved = await assertStockAvailable(manager, tenantId, createDto.items);
@@ -147,6 +167,7 @@ export class OrdersService {
         tax: createDto.tax || 0,
         discount: 0,
         total: createDto.total || 0,
+        consents,
       });
       const savedOrder = await manager.save(order);
 
