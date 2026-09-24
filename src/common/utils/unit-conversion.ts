@@ -1,7 +1,7 @@
 /**
  * Conversión entre unidades de medida del catálogo de InOut (los mismos
  * códigos usados en material-form/product-form: kg, g, mg, lb, oz, l, ml,
- * gal, m, cm, mm, in, ft, m2, m3, units, pcs, box, pack, doz).
+ * gal, m, cm, mm, km, in, ft, m2, m3, units, pcs, box, pack, doz).
  *
  * Se usa para poder comprar un material en su "unidad de medida" (ej. kg)
  * y descargarlo en una receta/composición en una "unidad de descarga"
@@ -10,20 +10,21 @@
  *
  * Cada unidad pertenece a una "familia" (masa, volumen, longitud, área,
  * volumen³, conteo). Solo se puede convertir dentro de la misma familia.
- * "box"/"pack" quedan como familias de un solo elemento porque no hay un
- * factor fijo conocido (una caja no siempre trae la misma cantidad) — así
- * que solo son compatibles consigo mismas.
+ * "pack" (paquete) entra en la familia de conteo con una equivalencia por
+ * defecto de 6 unidades. "box" queda como familia de un solo elemento porque
+ * no hay un factor fijo conocido (una caja no siempre trae la misma
+ * cantidad) — así que solo es compatible consigo misma.
  */
 
 const FAMILY_UNITS: Record<string, string[]> = {
   mass: ['mg', 'g', 'kg', 'lb', 'oz'],
   volume: ['ml', 'l', 'gal'],
-  length: ['mm', 'cm', 'm', 'in', 'ft'],
+  length: ['mm', 'cm', 'm', 'km', 'in', 'ft'],
   area: ['m2'],
   volume3: ['m3'],
-  count: ['units', 'pcs', 'doz'],
+  // Paquete = 6 unidades (equivalencia por defecto del catálogo)
+  count: ['units', 'pcs', 'doz', 'pack'],
   box: ['box'],
-  pack: ['pack'],
 };
 
 // Factor para convertir 1 unidad a la unidad base de su familia
@@ -31,11 +32,11 @@ const FAMILY_UNITS: Record<string, string[]> = {
 const FACTOR_TO_BASE: Record<string, number> = {
   mg: 0.001, g: 1, kg: 1000, lb: 453.59237, oz: 28.349523125,
   ml: 1, l: 1000, gal: 3785.411784,
-  mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8,
+  mm: 1, cm: 10, m: 1000, km: 1000000, in: 25.4, ft: 304.8,
   m2: 1,
   m3: 1,
   units: 1, pcs: 1, doz: 12,
-  box: 1, pack: 1,
+  box: 1, pack: 6,
 };
 
 function familyOf(unit: string): string | null {
