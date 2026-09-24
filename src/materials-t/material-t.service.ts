@@ -1,5 +1,6 @@
 import {
     BadRequestException,
+    HttpException,
     Injectable,
     InternalServerErrorException,
     Logger,
@@ -19,6 +20,7 @@ import {
   import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
   import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
   import { areUnitsCompatible, convertUnits } from 'src/common/utils/unit-conversion';
+  import { assertResaleConfig } from '../common/resale';
   
   @Injectable()
   export class MaterialsTService {
@@ -57,6 +59,7 @@ import {
           `La unidad de descarga ("${anyDto.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${anyDto.strUnitMeasure}") para poder convertir entre ellas.`,
         );
       }
+      assertResaleConfig(anyDto);
 
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
@@ -306,6 +309,7 @@ import {
             `La unidad de descarga ("${material.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${material.strUnitMeasure}") para poder convertir entre ellas.`,
           );
         }
+        assertResaleConfig(material);
 
         material = await queryRunner.manager.save(material);
 
@@ -486,6 +490,8 @@ import {
     }
   
     private handleDBException(error: any) {
+      // Errores de validación ya tipados (400/404) no deben volverse un 500 genérico
+      if (error instanceof HttpException) throw error;
       if (error.code === '23505') throw new BadRequestException(error.detail);
       this.logger.error(error);
       throw new InternalServerErrorException(`Unexpected error, check server logs`);

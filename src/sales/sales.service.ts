@@ -9,7 +9,7 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { BusinessParamsService } from '../config/business-params.service';
-import { assertStockAvailable, StockLine } from '../common/stock-availability';
+import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
 
 @Injectable()
 export class SalesService {
@@ -78,11 +78,13 @@ export class SalesService {
       // descontaba el primero (strProductId/fltQuantity) y el resto salía sin
       // control de stock. Si items[] no trae productId (clientes viejos), se
       // conserva el comportamiento de un solo producto.
-      const itemLines: (StockLine & { unitPrice: number })[] = Array.isArray(createDto.items)
+      // itemType distingue productos de materiales de reventa (default: product).
+      const itemLines: StockLine[] = Array.isArray(createDto.items)
         ? createDto.items
             .filter((i: any) => i?.productId)
             .map((i: any) => ({
               productId: i.productId,
+              itemType: i.itemType,
               quantity: Number(i.quantity) || 0,
               productName: i.productName || i.product,
               unitPrice: Number(i.unitPrice) || 0,
@@ -98,7 +100,7 @@ export class SalesService {
 
       // Valida contra el stock DISPONIBLE (descontando lo reservado por
       // pedidos confirmados) y bloquea las filas hasta el commit.
-      const products = await assertStockAvailable(queryRunner.manager, tenantId, lines);
+      const resolved = await assertStockAvailable(queryRunner.manager, tenantId, lines);
 
       // Obtener parámetros de negocio del período activo
       const params = await this.businessParamsService.getParams(tenantId);
@@ -155,18 +157,16 @@ export class SalesService {
       const savedSale = await queryRunner.manager.save(sale);
 
       // Descontar stock y registrar la salida de CADA ítem
-      for (const line of lines) {
-        const product = products.get(line.productId)!;
-        product.ingQuantity = parseFloat(product.ingQuantity.toString()) - line.quantity;
-        await queryRunner.manager.save(product);
-
+      // (materiales de reventa: presentaciones convertidas a su unidad de stock)
+      await applyStockDelta(queryRunner.manager, tenantId, resolved, { onHand: -1 });
+      for (const line of resolved) {
         await queryRunner.manager.save(InventoryMovement, {
           strTenantId: tenantId,
-          strProductId: line.productId,
+          ...movementTarget(line),
           strType: 'OUT',
           strReason: 'SALE',
-          fltQuantity: line.quantity,
-          fltUnitPrice: line.unitPrice,
+          fltQuantity: line.baseQuantity,
+          fltUnitPrice: line.baseUnitPrice,
           strReferenceId: savedSale.strId,
           strNotes: `Venta ${invoiceCode}`,
           dtmDate: dtmDate

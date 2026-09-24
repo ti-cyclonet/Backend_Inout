@@ -6,7 +6,7 @@ import { Product } from '../products/entities/product.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
-import { assertStockAvailable } from '../common/stock-availability';
+import { applyStockDelta, assertStockAvailable, movementTarget, resolveStockLines } from '../common/stock-availability';
 
 @Injectable()
 export class OrdersService {
@@ -132,7 +132,7 @@ export class OrdersService {
     const { tenantId } = createDto;
 
     return this.dataSource.transaction(async (manager) => {
-      await assertStockAvailable(manager, tenantId, createDto.items);
+      const resolved = await assertStockAvailable(manager, tenantId, createDto.items);
 
       const orderCode = await this.generateOrderCode(tenantId);
       const order = manager.create(Order, {
@@ -150,13 +150,7 @@ export class OrdersService {
       });
       const savedOrder = await manager.save(order);
 
-      for (const item of createDto.items) {
-        if (!item.productId) continue;
-        await manager.query(
-          `UPDATE manufacturing.products SET "ingReservedStock" = COALESCE("ingReservedStock", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
-          [item.quantity, item.productId, tenantId],
-        );
-      }
+      await applyStockDelta(manager, tenantId, resolved, { reserved: 1 });
 
       return savedOrder;
     });
@@ -267,54 +261,37 @@ export class OrdersService {
       // Un borrador puede crearse sin stock (sirve de cotización), pero NO se
       // confirma si no hay stock disponible para todos sus ítems.
       await this.dataSource.transaction(async (manager) => {
-        await assertStockAvailable(manager, tenantId, order.items);
-        for (const item of order.items) {
-          if (item.productId) {
-            await manager.query(
-              `UPDATE manufacturing.products SET "ingReservedStock" = COALESCE("ingReservedStock", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
-              [item.quantity, item.productId, tenantId]
-            );
-          }
-        }
+        const resolved = await assertStockAvailable(manager, tenantId, order.items);
+        await applyStockDelta(manager, tenantId, resolved, { reserved: 1 });
       });
     }
 
     // Liberar stock reservado si se cancela un pedido que aún no fue entregado
     // (si ya fue DELIVERED, la reserva ya se liberó al entregar — ver abajo)
     if (newStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.DRAFT && previousStatus !== OrderStatus.DELIVERED) {
-      for (const item of (order.items || [])) {
-        if (item.productId) {
-          await this.dataSource.query(
-            `UPDATE manufacturing.products SET "ingReservedStock" = GREATEST(0, COALESCE("ingReservedStock", 0) - $1) WHERE "strId" = $2 AND "strTenantId" = $3`,
-            [item.quantity, item.productId, tenantId]
-          );
-        }
-      }
+      const resolved = await resolveStockLines(this.dataSource.manager, tenantId, order.items, { skipMissing: true });
+      await applyStockDelta(this.dataSource.manager, tenantId, resolved, { reserved: -1 });
     }
 
     // Cancelar un pedido ya entregado: el stock real ya salió del inventario,
     // hay que devolverlo (reversa) en vez de tocar la reserva.
     if (newStatus === OrderStatus.CANCELLED && previousStatus === OrderStatus.DELIVERED) {
-      for (const item of (order.items || [])) {
-        if (item.productId) {
-          await this.dataSource.query(
-            `UPDATE manufacturing.products SET "ingQuantity" = COALESCE("ingQuantity", 0) + $1 WHERE "strId" = $2 AND "strTenantId" = $3`,
-            [item.quantity, item.productId, tenantId]
-          );
-          await this.inventoryMovementRepository.save(
-            this.inventoryMovementRepository.create({
-              strTenantId: tenantId,
-              strProductId: item.productId,
-              strType: 'IN',
-              strReason: 'ADJUSTMENT',
-              fltQuantity: item.quantity,
-              fltUnitPrice: item.unitPrice,
-              strReferenceId: order.id,
-              strNotes: `Cancelación de pedido entregado ${order.orderCode}`,
-              dtmDate: new Date(),
-            }),
-          );
-        }
+      const resolved = await resolveStockLines(this.dataSource.manager, tenantId, order.items, { skipMissing: true });
+      await applyStockDelta(this.dataSource.manager, tenantId, resolved, { onHand: 1 });
+      for (const line of resolved) {
+        await this.inventoryMovementRepository.save(
+          this.inventoryMovementRepository.create({
+            strTenantId: tenantId,
+            ...movementTarget(line),
+            strType: 'IN',
+            strReason: 'ADJUSTMENT',
+            fltQuantity: line.baseQuantity,
+            fltUnitPrice: line.baseUnitPrice,
+            strReferenceId: order.id,
+            strNotes: `Cancelación de pedido entregado ${order.orderCode}`,
+            dtmDate: new Date(),
+          }),
+        );
       }
     }
 
@@ -322,26 +299,22 @@ export class OrdersService {
     // reserva y registra la salida en el Kardex — antes solo se liberaba la
     // reserva y el stock real nunca bajaba.
     if (newStatus === OrderStatus.DELIVERED) {
-      for (const item of (order.items || [])) {
-        if (item.productId) {
-          await this.dataSource.query(
-            `UPDATE manufacturing.products SET "ingQuantity" = GREATEST(0, COALESCE("ingQuantity", 0) - $1), "ingReservedStock" = GREATEST(0, COALESCE("ingReservedStock", 0) - $1) WHERE "strId" = $2 AND "strTenantId" = $3`,
-            [item.quantity, item.productId, tenantId]
-          );
-          await this.inventoryMovementRepository.save(
-            this.inventoryMovementRepository.create({
-              strTenantId: tenantId,
-              strProductId: item.productId,
-              strType: 'OUT',
-              strReason: 'SALE',
-              fltQuantity: item.quantity,
-              fltUnitPrice: item.unitPrice,
-              strReferenceId: order.id,
-              strNotes: `Pedido ${order.orderCode}`,
-              dtmDate: new Date(),
-            }),
-          );
-        }
+      const resolved = await resolveStockLines(this.dataSource.manager, tenantId, order.items, { skipMissing: true });
+      await applyStockDelta(this.dataSource.manager, tenantId, resolved, { onHand: -1, reserved: -1 });
+      for (const line of resolved) {
+        await this.inventoryMovementRepository.save(
+          this.inventoryMovementRepository.create({
+            strTenantId: tenantId,
+            ...movementTarget(line),
+            strType: 'OUT',
+            strReason: 'SALE',
+            fltQuantity: line.baseQuantity,
+            fltUnitPrice: line.baseUnitPrice,
+            strReferenceId: order.id,
+            strNotes: `Pedido ${order.orderCode}`,
+            dtmDate: new Date(),
+          }),
+        );
       }
     }
 

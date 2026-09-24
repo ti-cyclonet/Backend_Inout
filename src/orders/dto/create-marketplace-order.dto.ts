@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class MarketplaceOrderItemDto {
@@ -18,6 +18,11 @@ export class MarketplaceOrderItemDto {
 
   @IsNumber()
   subtotal: number;
+
+  /** 'product' (default) o material de reventa ('material' | 'material_t'). */
+  @IsOptional()
+  @IsIn(['product', 'material', 'material_t'])
+  itemType?: string;
 }
 
 export class CreateMarketplaceOrderDto {

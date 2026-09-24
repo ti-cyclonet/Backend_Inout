@@ -24,6 +24,19 @@ export class ProductsController {
     return this.productsService.findMarketplaceCatalog(tenantId, +page || 1, +limit || 10);
   }
 
+  /** Público (MarketPlace): materiales de reventa visibles en el catálogo. */
+  @Get('tenant/:tenantId/resale')
+  findResaleByTenant(@Param('tenantId') tenantId: string) {
+    return this.productsService.findResaleItems(tenantId, true);
+  }
+
+  /** Panel (Ventas / Pedidos): todos los materiales de reventa del tenant. */
+  @UseGuards(JwtAuthGuard)
+  @Get('resale-items')
+  findResaleItems(@GetTenantId() tenantId: string) {
+    return this.productsService.findResaleItems(tenantId, false);
+  }
+
   @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post()
   @CheckLimit('nProductos')

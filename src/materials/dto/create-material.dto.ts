@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsNumber, IsBoolean } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNumber, IsBoolean, Min, MaxLength } from 'class-validator';
 
 export class CreateMaterialDto {
   @IsString()
@@ -54,4 +54,28 @@ export class CreateMaterialDto {
   @IsBoolean()
   @IsOptional()
   blnMarketplaceVisible?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  blnForResale?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  strSalePresentation?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  fltPresentationQuantity?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  fltSalePrice?: number;
+
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  ingPlannedMonthlyUnits?: number;
 }

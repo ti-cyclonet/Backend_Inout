@@ -60,6 +60,34 @@ export class Material {
   @Column({ type: 'boolean', nullable: false, default: true })
   blnMarketplaceVisible: boolean;
 
+  // ── Reventa (redistribución, ej. tiendas de barrio) ──────────────────────
+  // El stock (ingQuantity) y el costo (fltPrice) están en strUnitMeasure; la
+  // reventa se hace por PRESENTACIÓN (ej. "Bolsa 1 kg" = 1000 g).
+
+  /** Material habilitado para venderse tal cual (Ventas, Pedidos, MarketPlace). */
+  @Column({ type: 'boolean', nullable: false, default: false })
+  blnForResale: boolean;
+
+  /** Nombre de la presentación de venta, ej. "Bolsa 1 kg". */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  strSalePresentation: string;
+
+  /** Cantidad en strUnitMeasure que contiene una presentación (ej. 1000). */
+  @Column({ type: 'decimal', precision: 12, scale: 3, nullable: false, default: 0 })
+  fltPresentationQuantity: number;
+
+  /** Precio de venta por presentación (no puede ser menor al sugerido). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: false, default: 0 })
+  fltSalePrice: number;
+
+  /** Presentaciones que se planea vender al mes: prorratea el costo indirecto. */
+  @Column({ type: 'int', nullable: false, default: 0 })
+  ingPlannedMonthlyUnits: number;
+
+  /** Stock reservado por pedidos confirmados, en strUnitMeasure. */
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
+  ingReservedStock: number;
+
   @ManyToOne(() => Category, category => category.materials)
   @JoinColumn({ name: 'categoryId' })
   category: Category;

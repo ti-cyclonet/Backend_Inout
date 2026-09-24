@@ -31,7 +31,8 @@ export class Order {
   status: OrderStatus;
 
   @Column({ type: 'jsonb', nullable: true })
-  items: { productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number }[];
+  /** itemType: 'product' (default si falta) | 'material' | 'material_t' (reventa, quantity en presentaciones). */
+  items: { productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; itemType?: string }[];
 
   @Column({ type: 'text', nullable: true })
   notes: string;

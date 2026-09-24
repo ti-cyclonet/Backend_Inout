@@ -12,7 +12,7 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsArray()
-  items?: { productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number }[];
+  items?: { productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; itemType?: string }[];
 
   @IsOptional()
   @IsString()
