@@ -1,16 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique, UpdateDateColumn } from 'typeorm';
-import { Product } from '../../products/entities/product.entity';
+import { Entity, PrimaryGeneratedColumn, Column, Unique, UpdateDateColumn } from 'typeorm';
 
 /**
- * Plan de producción: cuántas unidades de un producto se planea fabricar en
- * un período/subperíodo dado. Reemplaza el campo "Unidades que planeas
- * producir al mes" que antes se re-adivinaba cada vez en el formulario de
- * creación/edición del producto — ahora es un valor único por
- * (tenant, período, producto), configurado en Settings, y reutilizado en
- * todos lados donde se calcule el costo indirecto por unidad.
+ * Plan de producción / venta: cuántas unidades de un ítem se planea
+ * producir (productos) o vender (materiales y materiales compuestos de
+ * reventa, en presentaciones) en un período/subperíodo dado. Es un valor
+ * único por (tenant, período, tipo, ítem), configurado en Settings, y se
+ * reutiliza donde se calcule el costo indirecto por unidad.
  */
 @Entity({ name: 'production_plans', schema: 'manufacturing' })
-@Unique(['strTenantId', 'periodId', 'productId'])
+@Unique(['strTenantId', 'periodId', 'itemType', 'productId'])
 export class ProductionPlan {
   @PrimaryGeneratedColumn('uuid')
   strId: string;
@@ -23,12 +21,17 @@ export class ProductionPlan {
   @Column({ type: 'varchar', length: 100 })
   periodId: string;
 
+  /** 'product' | 'material' | 'material_t' (reventa). */
+  @Column({ type: 'varchar', length: 20, default: 'product' })
+  itemType: string;
+
+  /**
+   * Id del ítem (producto, material o material compuesto según itemType).
+   * Conserva el nombre histórico de la columna; ya no tiene FK a productos
+   * porque también apunta a materiales.
+   */
   @Column({ type: 'uuid' })
   productId: string;
-
-  @ManyToOne(() => Product)
-  @JoinColumn({ name: 'productId' })
-  product: Product;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   fltPlannedMonthlyUnits: number;
