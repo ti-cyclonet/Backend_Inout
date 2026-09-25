@@ -38,6 +38,13 @@ export class Order {
   @Column({ type: 'varchar', length: 500, nullable: true })
   customerAddress: string;
 
+  /** Ubicación exacta de entrega (GPS del comprador en el MarketPlace). */
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  deliveryLatitude: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  deliveryLongitude: number;
+
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.DRAFT })
   status: OrderStatus;
 
