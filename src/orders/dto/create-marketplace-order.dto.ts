@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class MarketplaceOrderItemDto {
@@ -68,19 +68,35 @@ export class CreateMarketplaceOrderDto {
   total: number;
 
   // Aceptación de Términos y Condiciones y autorización de Tratamiento de
-  // Datos (Ley 1581/2012). Obligatoria también para invitados: igual
-  // entregan nombre, teléfono y dirección.
+  // Datos (Ley 1581/2012). Obligatoria para invitados (se valida en el
+  // servicio); un cliente con sesión ya la dio al registrarse o al iniciar
+  // sesión y queda probada en Authoriza (user_consents).
+  @IsOptional()
   @IsBoolean()
-  acceptTerms: boolean;
+  acceptTerms?: boolean;
 
+  @IsOptional()
   @IsBoolean()
-  acceptHabeasData: boolean;
+  acceptHabeasData?: boolean;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  termsVersion: string;
+  termsVersion?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  habeasDataVersion: string;
+  habeasDataVersion?: string;
+
+  /** Ubicación exacta de entrega capturada con el GPS del comprador (opcional). */
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  deliveryLatitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  deliveryLongitude?: number;
 }

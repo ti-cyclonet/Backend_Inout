@@ -138,18 +138,26 @@ export class OrdersService {
   ) {
     const { tenantId } = createDto;
 
-    if (createDto.acceptTerms !== true || createDto.acceptHabeasData !== true) {
+    // Invitado: la aceptación va con el pedido. Cliente con sesión
+    // (customerId): ya la dio al registrarse/iniciar sesión (Authoriza).
+    const isGuest = !customer.customerId;
+    const accepted = createDto.acceptTerms === true && createDto.acceptHabeasData === true
+      && !!createDto.termsVersion && !!createDto.habeasDataVersion;
+    if (isGuest && !accepted) {
       throw new BadRequestException(
         'Debes aceptar los Términos y Condiciones y autorizar el tratamiento de tus datos personales para hacer el pedido.',
       );
     }
-    const consents = {
-      termsVersion: createDto.termsVersion,
-      habeasDataVersion: createDto.habeasDataVersion,
-      acceptedAt: new Date().toISOString(),
-      ipAddress: meta.ipAddress?.slice(0, 64) || null,
-      userAgent: meta.userAgent?.slice(0, 500) || null,
-    };
+    const consents = accepted
+      ? {
+          termsVersion: createDto.termsVersion!,
+          habeasDataVersion: createDto.habeasDataVersion!,
+          acceptedAt: new Date().toISOString(),
+          ipAddress: meta.ipAddress?.slice(0, 64) || null,
+          userAgent: meta.userAgent?.slice(0, 500) || null,
+        }
+      : null;
+    const hasLocation = Number.isFinite(createDto.deliveryLatitude) && Number.isFinite(createDto.deliveryLongitude);
 
     return this.dataSource.transaction(async (manager) => {
       const resolved = await assertStockAvailable(manager, tenantId, createDto.items);
@@ -164,6 +172,8 @@ export class OrdersService {
         customerPhone: createDto.customerPhone?.trim() || null,
         customerEmail: createDto.customerEmail?.trim() || null,
         customerAddress: createDto.customerAddress?.trim() || null,
+        deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
+        deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,
         items: createDto.items,
         notes: createDto.notes || null,
         subtotal: createDto.subtotal || 0,
