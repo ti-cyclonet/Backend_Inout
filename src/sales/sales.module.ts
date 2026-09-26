@@ -11,9 +11,10 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { Order } from '../orders/entities/order.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { UsageCountersModule } from '../usage-counters/usage-counters.module';
+import { CreditModule } from '../credit/credit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule],
+  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule],
   controllers: [SalesController],
   providers: [SalesService, InvoicePdfService],
   exports: [SalesService],

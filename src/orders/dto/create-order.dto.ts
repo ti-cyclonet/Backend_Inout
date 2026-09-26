@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsDateString, IsEnum, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsDateString, IsEnum, MaxLength, IsIn } from 'class-validator';
+import { PAYMENT_METHODS } from '../../credit/entities/receivable-payment.entity';
 import { OrderStatus } from '../entities/order.entity';
 
 export class CreateOrderDto {
@@ -48,4 +49,13 @@ export class UpdateOrderStatusDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  /** Al facturar (INVOICED): forma de pago. CREDITO genera cuenta por cobrar. */
+  @IsOptional()
+  @IsIn(['CONTADO', 'CREDITO'])
+  paymentType?: 'CONTADO' | 'CREDITO';
+
+  @IsOptional()
+  @IsIn(PAYMENT_METHODS as unknown as string[])
+  paymentMethod?: string;
 }

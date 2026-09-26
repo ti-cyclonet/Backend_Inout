@@ -65,6 +65,16 @@ export class Order {
   @Column({ type: 'timestamp', nullable: true })
   cancelledAt: Date;
 
+  /** Forma de pago al facturar: 'CONTADO' | 'CREDITO' (null mientras no se factura). */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  paymentType: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  paymentMethod: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  invoicedAt: Date | null;
+
   /** Prueba de la aceptación de Términos y Tratamiento de Datos del comprador (MarketPlace). */
   @Column({ type: 'jsonb', nullable: true })
   consents: {

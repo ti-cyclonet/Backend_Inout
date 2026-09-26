@@ -6,6 +6,7 @@ import { Product } from '../products/entities/product.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
+import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, resolveStockLines } from '../common/stock-availability';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
@@ -24,6 +25,7 @@ export class OrdersService {
     @InjectRepository(InventoryMovement)
     private inventoryMovementRepository: Repository<InventoryMovement>,
     private dataSource: DataSource,
+    private creditService: CreditService,
   ) {}
 
   private async getContractPrefix(tenantId: string): Promise<string> {
@@ -271,7 +273,13 @@ export class OrdersService {
     return { data: orders };
   }
 
-  async updateStatus(id: string, tenantId: string, newStatus: OrderStatus, reason?: string) {
+  async updateStatus(
+    id: string,
+    tenantId: string,
+    newStatus: OrderStatus,
+    reason?: string,
+    payment: { paymentType?: 'CONTADO' | 'CREDITO'; paymentMethod?: string } = {},
+  ) {
     const order = await this.findOne(id, tenantId);
     const previousStatus = order.status;
 
@@ -374,6 +382,30 @@ export class OrdersService {
       order.cancellationReason = cancellationReason;
       order.cancelledAt = new Date();
     }
+
+    // Facturar: forma de pago. A crédito se valida el cupo y se crea la
+    // cuenta por cobrar en la misma transacción que el cambio de estado.
+    if (newStatus === OrderStatus.INVOICED) {
+      const isCredit = payment.paymentType === 'CREDITO';
+      order.paymentType = isCredit ? 'CREDITO' : 'CONTADO';
+      order.paymentMethod = isCredit ? null : (payment.paymentMethod || 'EFECTIVO');
+      order.invoicedAt = new Date();
+      if (isCredit) {
+        const saved = await this.dataSource.transaction(async (manager) => {
+          await this.creditService.createReceivableForCreditSale(manager, tenantId, {
+            customerId: order.customerId || null,
+            customerName: (order.customerName || 'Cliente').split(' | ')[0],
+            sourceType: 'ORDER',
+            sourceId: order.id,
+            documentCode: order.orderCode,
+            amount: Number(order.total) || 0,
+          });
+          return manager.save(order);
+        });
+        return { message: 'Pedido facturado a crédito', order: saved };
+      }
+    }
+
     const updatedOrder = await this.orderRepository.save(order);
 
     return { message: 'Estado actualizado exitosamente', order: updatedOrder };

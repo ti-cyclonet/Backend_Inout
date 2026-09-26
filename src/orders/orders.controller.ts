@@ -68,7 +68,10 @@ export class OrdersController {
     @Body() updateStatusDto: UpdateOrderStatusDto,
     @GetTenantId() tenantId: string,
   ) {
-    return this.ordersService.updateStatus(id, tenantId, updateStatusDto.status, updateStatusDto.reason);
+    return this.ordersService.updateStatus(id, tenantId, updateStatusDto.status, updateStatusDto.reason, {
+      paymentType: updateStatusDto.paymentType,
+      paymentMethod: updateStatusDto.paymentMethod,
+    });
   }
 
   @Delete(':id')
