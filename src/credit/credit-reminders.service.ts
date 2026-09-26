@@ -96,7 +96,8 @@ export class CreditRemindersService {
     try {
       const res = await fetch(`${this.authorizaUrl}/api/notifications/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // /notifications/send exige la clave interna entre servicios
+        headers: { 'Content-Type': 'application/json', 'x-internal-key': process.env.INTERNAL_API_KEY || '' },
         body: JSON.stringify({ to: email, templateCode: 'CREDIT_PAYMENT_REMINDER', variables }),
       });
       const body: any = await res.json().catch(() => ({}));
