@@ -45,6 +45,14 @@ export class Sale {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   total: number;
 
+  /** 'CONTADO' | 'CREDITO'. A crédito se genera una cuenta por cobrar. */
+  @Column({ type: 'varchar', length: 10, default: 'CONTADO' })
+  paymentType: string;
+
+  /** Medio de pago de contado (EFECTIVO, TRANSFERENCIA, TARJETA, NEQUI, DAVIPLATA, OTRO). */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  paymentMethod: string | null;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
 }

@@ -9,6 +9,7 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { BusinessParamsService } from '../config/business-params.service';
+import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class SalesService {
     private orderRepository: Repository<Order>,
     private dataSource: DataSource,
     private businessParamsService: BusinessParamsService,
+    private creditService: CreditService,
   ) {}
 
   private async generateInvoiceCode(tenantId: string): Promise<string> {
@@ -152,9 +154,26 @@ export class SalesService {
         subtotal: subtotal,
         tax: tax || 0,
         discount: discount || 0,
-        total: total
+        total: total,
+        paymentType: createDto.paymentType === 'CREDITO' ? 'CREDITO' : 'CONTADO',
+        paymentMethod: createDto.paymentType === 'CREDITO' ? null : (createDto.paymentMethod || 'EFECTIVO'),
       });
       const savedSale = await queryRunner.manager.save(sale);
+
+      // Venta a crédito: valida crédito aprobado, mora y cupo (con la cuenta
+      // bloqueada) y crea la cuenta por cobrar en la misma transacción.
+      let receivable: any = null;
+      if (createDto.paymentType === 'CREDITO') {
+        receivable = await this.creditService.createReceivableForCreditSale(queryRunner.manager, tenantId, {
+          customerId: createDto.customerId || null,
+          customerName: customerName || 'Cliente',
+          sourceType: 'SALE',
+          sourceId: savedSale.strId,
+          documentCode: invoiceCode,
+          amount: Number(total) || 0,
+          issueDate: typeof dtmDate === 'string' ? dtmDate.slice(0, 10) : undefined,
+        });
+      }
 
       // Descontar stock y registrar la salida de CADA ítem
       // (materiales de reventa: presentaciones convertidas a su unidad de stock)
@@ -184,6 +203,7 @@ export class SalesService {
       return {
         message: 'Venta registrada exitosamente',
         sale: savedSale,
+        receivable,
         appliedParams: {
           ivaPercent: params.IVA_PORCENTAJE,
           taxApplied: tax || 0,
