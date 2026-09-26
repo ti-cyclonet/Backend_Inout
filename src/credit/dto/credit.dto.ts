@@ -105,6 +105,54 @@ export class RegisterPaymentDto {
   notes?: string;
 }
 
+export class UpdateCreditSettingsDto {
+  /** Tasa de mora mensual (%). */
+  @IsNumber()
+  @Min(0)
+  @Max(10)
+  lateInterestMonthlyRate: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  graceDays: number;
+
+  @IsBoolean()
+  remindersEnabled: boolean;
+
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  reminderDaysBefore: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  overdueReminderEveryDays: number;
+}
+
+/** Solicitud de crédito hecha por el propio cliente desde el MarketPlace. */
+export class MarketplaceCreditRequestDto {
+  @IsNumber()
+  @Min(1)
+  requestedAmount: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  requestedTermDays: number;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  customerName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}
+
 export class VoidReceivableDto {
   @IsString()
   @IsNotEmpty()

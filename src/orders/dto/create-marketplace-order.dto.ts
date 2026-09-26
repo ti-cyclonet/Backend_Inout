@@ -87,6 +87,11 @@ export class CreateMarketplaceOrderDto {
   @IsString()
   habeasDataVersion?: string;
 
+  /** Solo con sesión de cliente: 'CREDITO' pide el pedido a crédito (se valida el cupo). */
+  @IsOptional()
+  @IsIn(['CONTADO', 'CREDITO'])
+  paymentPreference?: 'CONTADO' | 'CREDITO';
+
   /** Ubicación exacta de entrega capturada con el GPS del comprador (opcional). */
   @IsOptional()
   @IsNumber()

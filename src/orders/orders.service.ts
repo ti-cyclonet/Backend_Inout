@@ -116,6 +116,11 @@ export class OrdersService {
   /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
    * userId real de Authoriza en vez de solo un texto libre. */
   async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
+    // Compra a crédito: el cliente debe tener cupo disponible y estar al día.
+    // La cuenta por cobrar se crea al facturar el pedido.
+    if (createDto.paymentPreference === 'CREDITO') {
+      await this.creditService.assertCanRequestCreditPurchase(createDto.tenantId, authUserId, Number(createDto.total) || 0);
+    }
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: authUserId,
       customerName: createDto.customerName,
@@ -174,6 +179,7 @@ export class OrdersService {
         customerPhone: createDto.customerPhone?.trim() || null,
         customerEmail: createDto.customerEmail?.trim() || null,
         customerAddress: createDto.customerAddress?.trim() || null,
+        requestedPaymentType: customer.customerId && createDto.paymentPreference === 'CREDITO' ? 'CREDITO' : null,
         deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
         deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,
         items: createDto.items,

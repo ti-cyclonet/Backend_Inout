@@ -4,9 +4,10 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { CreditAccount, CreditRequestStatus } from './entities/credit-account.entity';
 import { Receivable, ReceivableStatus } from './entities/receivable.entity';
 import { ReceivablePayment } from './entities/receivable-payment.entity';
+import { CreditSettings } from './entities/credit-settings.entity';
 import {
-  AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, RegisterPaymentDto,
-  SuspendCreditDto, ValidateCreditDto, VoidReceivableDto,
+  AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, MarketplaceCreditRequestDto, RegisterPaymentDto,
+  SuspendCreditDto, UpdateCreditSettingsDto, ValidateCreditDto, VoidReceivableDto,
 } from './dto/credit.dto';
 
 export interface Actor {
@@ -22,7 +23,7 @@ const num = (v: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (v: number) => Math.round(v * 100) / 100;
-const money = (v: number) =>
+export const money = (v: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v || 0);
 
 /** Fecha de hoy en Colombia (UTC-5), AAAA-MM-DD. */
@@ -30,13 +31,13 @@ export function todayCo(): string {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-function addDays(date: string, days: number): string {
+export function addDays(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-function daysBetween(from: string, to: string): number {
+export function daysBetween(from: string, to: string): number {
   return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86400000);
 }
 
@@ -55,8 +56,53 @@ export class CreditService {
     @InjectRepository(CreditAccount) private readonly accountRepo: Repository<CreditAccount>,
     @InjectRepository(Receivable) private readonly receivableRepo: Repository<Receivable>,
     @InjectRepository(ReceivablePayment) private readonly paymentRepo: Repository<ReceivablePayment>,
+    @InjectRepository(CreditSettings) private readonly settingsRepo: Repository<CreditSettings>,
     private readonly dataSource: DataSource,
   ) {}
+
+  // ═══════════════════════ Configuración (mora y recordatorios) ═══════════════════════
+
+  /** Configuración del negocio (valores por defecto si aún no se ha guardado). */
+  async getSettings(tenantId: string): Promise<CreditSettings> {
+    const found = await this.settingsRepo.findOne({ where: { tenantId } });
+    if (found) {
+      found.lateInterestMonthlyRate = num(found.lateInterestMonthlyRate);
+      return found;
+    }
+    return this.settingsRepo.create({
+      tenantId,
+      lateInterestMonthlyRate: 0,
+      graceDays: 0,
+      remindersEnabled: false,
+      reminderDaysBefore: 3,
+      overdueReminderEveryDays: 7,
+    });
+  }
+
+  async updateSettings(tenantId: string, dto: UpdateCreditSettingsDto) {
+    const settings = await this.getSettings(tenantId);
+    Object.assign(settings, dto);
+    const saved = await this.settingsRepo.save(settings);
+    saved.lateInterestMonthlyRate = num(saved.lateInterestMonthlyRate);
+    return saved;
+  }
+
+  /**
+   * Intereses de mora pendientes a una fecha: los ya causados y no pagados
+   * más los que corren sobre el saldo de capital desde la última causación
+   * (o desde vencimiento + días de gracia). Interés simple diario
+   * = tasa mensual / 30.
+   */
+  interestPending(r: Receivable, settings: CreditSettings, asOf = todayCo()): number {
+    const frozen = round2(num(r.interestAccrued) - num(r.interestPaid));
+    const rate = num(settings.lateInterestMonthlyRate);
+    const balance = num(r.balance);
+    if (rate <= 0 || balance <= 0 || !OPEN_STATUSES.includes(r.status)) return Math.max(0, frozen);
+    const graceEnd = addDays(r.dueDate, settings.graceDays || 0);
+    const start = r.interestCalcDate && r.interestCalcDate > graceEnd ? r.interestCalcDate : graceEnd;
+    const days = Math.max(0, daysBetween(start, asOf));
+    return Math.max(0, round2(frozen + balance * (rate / 100 / 30) * days));
+  }
 
   // ═══════════════════════ Cuentas de crédito (flujo) ═══════════════════════
 
@@ -323,15 +369,20 @@ export class CreditService {
 
   // ═══════════════════════ Cartera ═══════════════════════
 
-  private decorateReceivable(r: Receivable, today = todayCo()) {
+  private decorateReceivable(r: Receivable, settings: CreditSettings, today = todayCo()) {
     const balance = num(r.balance);
     const open = OPEN_STATUSES.includes(r.status);
     const daysToDue = daysBetween(today, r.dueDate);
+    const interestPending = open ? this.interestPending(r, settings, today) : 0;
     return {
       ...r,
       amount: num(r.amount),
       paidAmount: num(r.paidAmount),
       balance,
+      interestAccrued: num(r.interestAccrued),
+      interestPaid: num(r.interestPaid),
+      interestPending,
+      totalDue: round2(balance + interestPending),
       daysOverdue: open && daysToDue < 0 ? -daysToDue : 0,
       daysToDue: open ? daysToDue : null,
       isOverdue: open && daysToDue < 0,
@@ -345,7 +396,8 @@ export class CreditService {
     else if (filters.status) where.status = filters.status;
     const rows = await this.receivableRepo.find({ where, order: { dueDate: 'ASC' } });
     const today = todayCo();
-    const decorated = rows.map((r) => this.decorateReceivable(r, today));
+    const settings = await this.getSettings(tenantId);
+    const decorated = rows.map((r) => this.decorateReceivable(r, settings, today));
     return filters.overdue === 'true' ? decorated.filter((r) => r.isOverdue) : decorated;
   }
 
@@ -353,34 +405,57 @@ export class CreditService {
     const r = await this.receivableRepo.findOne({ where: { id, tenantId } });
     if (!r) throw new NotFoundException('Cuenta por cobrar no encontrada');
     const payments = await this.paymentRepo.find({ where: { tenantId, receivableId: id }, order: { paymentDate: 'ASC', createdAt: 'ASC' } });
-    return { ...this.decorateReceivable(r), payments: payments.map((p) => ({ ...p, amount: num(p.amount) })) };
+    const settings = await this.getSettings(tenantId);
+    return {
+      ...this.decorateReceivable(r, settings),
+      payments: payments.map((p) => ({ ...p, amount: num(p.amount), interestPortion: num(p.interestPortion), capitalPortion: num(p.capitalPortion) })),
+    };
   }
 
+  /**
+   * Abono. Se imputa primero a los intereses de mora pendientes y luego a
+   * capital (art. 1653 del Código Civil). Los intereses se causan hasta la
+   * fecha del abono y quedan congelados en interestAccrued.
+   */
   async registerPayment(tenantId: string, actor: Actor, id: string, dto: RegisterPaymentDto) {
+    const settings = await this.getSettings(tenantId);
     return this.dataSource.transaction(async (manager) => {
       const r = await manager.findOne(Receivable, { where: { id, tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!r) throw new NotFoundException('Cuenta por cobrar no encontrada');
       if (!OPEN_STATUSES.includes(r.status)) throw new BadRequestException(`La cuenta ${r.documentCode} está ${r.status.toLowerCase()}.`);
       const amount = round2(num(dto.amount));
+      const paymentDate = dto.paymentDate || todayCo();
       const balance = num(r.balance);
-      if (amount > balance + 0.005) throw new BadRequestException(`El abono (${money(amount)}) supera el saldo (${money(balance)}).`);
+
+      // Causar intereses hasta la fecha del abono y congelarlos
+      const pendingInterest = this.interestPending(r, settings, paymentDate);
+      r.interestAccrued = round2(pendingInterest + num(r.interestPaid));
+      r.interestCalcDate = paymentDate;
+
+      const totalDue = round2(balance + pendingInterest);
+      if (amount > totalDue + 0.005) throw new BadRequestException(`El abono (${money(amount)}) supera el total adeudado (${money(totalDue)}).`);
+      const interestPortion = round2(Math.min(amount, pendingInterest));
+      const capitalPortion = round2(amount - interestPortion);
 
       await manager.save(ReceivablePayment, manager.create(ReceivablePayment, {
         tenantId,
         receivableId: r.id,
         amount,
+        interestPortion,
+        capitalPortion,
         method: dto.method as any,
         reference: dto.reference?.trim() || null,
-        paymentDate: dto.paymentDate || todayCo(),
+        paymentDate,
         notes: dto.notes?.trim() || null,
         createdByUserId: actor?.id || null,
         createdByEmail: actor?.email || null,
       }));
-      r.paidAmount = round2(num(r.paidAmount) + amount);
-      r.balance = round2(Math.max(0, balance - amount));
+      r.interestPaid = round2(num(r.interestPaid) + interestPortion);
+      r.paidAmount = round2(num(r.paidAmount) + capitalPortion);
+      r.balance = round2(Math.max(0, balance - capitalPortion));
       r.status = r.balance <= 0.005 ? ReceivableStatus.PAGADA : ReceivableStatus.PARCIAL;
       await manager.save(r);
-      return this.decorateReceivable(r);
+      return { ...this.decorateReceivable(r, settings), interestPortion, capitalPortion };
     });
   }
 
@@ -399,7 +474,8 @@ export class CreditService {
   /** Resumen de cartera: saldos, vencida y antigüedad. */
   async summary(tenantId: string) {
     const today = todayCo();
-    const open = (await this.receivableRepo.find({ where: { tenantId, status: In(OPEN_STATUSES) } })).map((r) => this.decorateReceivable(r, today));
+    const settings = await this.getSettings(tenantId);
+    const open = (await this.receivableRepo.find({ where: { tenantId, status: In(OPEN_STATUSES) } })).map((r) => this.decorateReceivable(r, settings, today));
     const aging = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
     const byCustomer = new Map<string, { customerId: string; customerName: string; balance: number; overdue: number; count: number }>();
     for (const r of open) {
@@ -423,6 +499,8 @@ export class CreditService {
     return {
       total,
       overdue,
+      interestPending: round2(open.reduce((s, r) => s + r.interestPending, 0)),
+      lateInterestMonthlyRate: num(settings.lateInterestMonthlyRate),
       current: aging.current,
       openCount: open.length,
       overdueCount: open.filter((r) => r.isOverdue).length,
@@ -452,7 +530,83 @@ export class CreditService {
       account: account ? (await this.getAccount(tenantId, account.id)) : null,
       eligibility: await this.eligibility(tenantId, customerId),
       receivables,
-      payments: payments.map((p) => ({ ...p, amount: num(p.amount) })),
+      payments: payments.map((p) => ({ ...p, amount: num(p.amount), interestPortion: num(p.interestPortion), capitalPortion: num(p.capitalPortion) })),
     };
+  }
+
+  // ═══════════════════════ MarketPlace (el propio cliente) ═══════════════════════
+
+  /** Crédito del cliente en sesión: estado del trámite y si puede comprar a crédito. */
+  async myCredit(tenantId: string, customerId: string) {
+    const account = await this.accountRepo.findOne({ where: { tenantId, customerId } });
+    return {
+      eligibility: await this.eligibility(tenantId, customerId),
+      requestStatus: account?.requestStatus || null,
+      requestedAmount: account ? num(account.requestedAmount) : null,
+      rejectionReason: account?.requestStatus === CreditRequestStatus.RECHAZADA ? account.rejectionReason : null,
+      suspended: !!account?.suspended,
+    };
+  }
+
+  /** Solicitud de crédito hecha por el cliente desde el MarketPlace (entra al mismo flujo). */
+  async marketplaceRequest(tenantId: string, actor: Actor, customerId: string, dto: MarketplaceCreditRequestDto) {
+    return this.createRequest(tenantId, actor, {
+      customerId,
+      customerName: dto.customerName,
+      customerEmail: actor.email || undefined,
+      requestedAmount: dto.requestedAmount,
+      requestedTermDays: dto.requestedTermDays,
+      notes: `[Solicitada por el cliente desde el MarketPlace]${dto.notes?.trim() ? ' ' + dto.notes.trim() : ''}`,
+    });
+  }
+
+  /**
+   * Para el checkout del MarketPlace: ¿puede pedir este total a crédito?
+   * (La cuenta por cobrar se crea al facturar el pedido.)
+   */
+  async assertCanRequestCreditPurchase(tenantId: string, customerId: string, total: number) {
+    const e = await this.eligibility(tenantId, customerId);
+    if (!e.eligible) throw new BadRequestException(`No puedes comprar a crédito: ${e.reason}`);
+    if (round2(total) > e.available + 0.005) {
+      throw new BadRequestException(`El pedido supera tu cupo disponible (${money(e.available)}).`);
+    }
+  }
+
+  // ═══════════════════════ Recordatorios ═══════════════════════
+
+  /** Cuentas abiertas con los datos necesarios para recordar (cliente, correo, intereses). */
+  async openReceivablesForReminders(tenantId: string) {
+    const settings = await this.getSettings(tenantId);
+    const rows = await this.receivableRepo.find({ where: { tenantId, status: In(OPEN_STATUSES) } });
+    const accounts = rows.length
+      ? await this.accountRepo.find({ where: { tenantId, customerId: In([...new Set(rows.map((r) => r.customerId))]) } })
+      : [];
+    const emailOf = new Map(accounts.map((a) => [a.customerId, a.customerEmail]));
+    const today = todayCo();
+    return {
+      settings,
+      rows: rows.map((r) => ({ entity: r, view: this.decorateReceivable(r, settings, today), email: emailOf.get(r.customerId) || null })),
+    };
+  }
+
+  async markReminded(r: Receivable) {
+    r.lastReminderAt = new Date();
+    r.reminderCount = (r.reminderCount || 0) + 1;
+    await this.receivableRepo.save(r);
+  }
+
+  async findOpenReceivable(tenantId: string, id: string) {
+    const r = await this.receivableRepo.findOne({ where: { id, tenantId } });
+    if (!r) throw new NotFoundException('Cuenta por cobrar no encontrada');
+    if (!OPEN_STATUSES.includes(r.status)) throw new BadRequestException('La cuenta ya no está abierta.');
+    const account = await this.accountRepo.findOne({ where: { tenantId, customerId: r.customerId } });
+    const settings = await this.getSettings(tenantId);
+    return { entity: r, view: this.decorateReceivable(r, settings), email: account?.customerEmail || null };
+  }
+
+  /** Tenants con recordatorios activos (para la tarea diaria). */
+  async tenantsWithReminders(): Promise<string[]> {
+    const rows = await this.settingsRepo.find({ where: { remindersEnabled: true } });
+    return rows.map((r) => r.tenantId);
   }
 }

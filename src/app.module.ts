@@ -47,6 +47,7 @@ import { CreditModule } from './credit/credit.module';
 import { CreditAccount } from './credit/entities/credit-account.entity';
 import { Receivable } from './credit/entities/receivable.entity';
 import { ReceivablePayment } from './credit/entities/receivable-payment.entity';
+import { CreditSettings } from './credit/entities/credit-settings.entity';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { Order } from './orders/entities/order.entity';
 import { Warehouse } from './warehouses/entities/warehouse.entity';
@@ -67,7 +68,7 @@ import { PhysicalCount } from './warehouses/entities/physical-count.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
