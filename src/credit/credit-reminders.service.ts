@@ -98,7 +98,7 @@ export class CreditRemindersService {
         method: 'POST',
         // /notifications/send exige la clave interna entre servicios
         headers: { 'Content-Type': 'application/json', 'x-internal-key': process.env.INTERNAL_API_KEY || '' },
-        body: JSON.stringify({ to: email, templateCode: 'CREDIT_PAYMENT_REMINDER', variables }),
+        body: JSON.stringify({ to: email, templateCode: 'CREDIT_PAYMENT_REMINDER', variables, tenantId }),
       });
       const body: any = await res.json().catch(() => ({}));
       if (!res.ok || body?.success === false) throw new Error(body?.message || `HTTP ${res.status}`);
