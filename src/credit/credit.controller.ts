@@ -5,9 +5,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { Actor, CreditService } from './credit.service';
+import { CreditRemindersService } from './credit-reminders.service';
+import { ForbiddenException } from '@nestjs/common';
 import {
-  AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, RegisterPaymentDto,
-  SuspendCreditDto, ValidateCreditDto, VoidReceivableDto,
+  AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, MarketplaceCreditRequestDto, RegisterPaymentDto,
+  SuspendCreditDto, UpdateCreditSettingsDto, ValidateCreditDto, VoidReceivableDto,
 } from './dto/credit.dto';
 
 const actorOf = (req: Request): Actor => {
@@ -23,7 +25,45 @@ const actorOf = (req: Request): Actor => {
 @Controller('credit')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CreditController {
-  constructor(private readonly creditService: CreditService) {}
+  constructor(
+    private readonly creditService: CreditService,
+    private readonly remindersService: CreditRemindersService,
+  ) {}
+
+  /** El cliente del MarketPlace (rol clienteInout) actúa sobre SU propio crédito. */
+  private clientOf(req: Request): { tenantId: string; customerId: string } {
+    const u = req.user as any;
+    if (u?.role !== 'clienteInout' || !u?.tenantId || !u?.id) {
+      throw new ForbiddenException('Solo cuentas de cliente.');
+    }
+    return { tenantId: u.tenantId, customerId: u.id };
+  }
+
+  // ── Configuración: intereses de mora y recordatorios ──
+  @Get('settings')
+  @Roles('admin', 'operator', 'viewer')
+  getSettings(@GetTenantId() tenantId: string) {
+    return this.creditService.getSettings(tenantId);
+  }
+
+  @Patch('settings')
+  @Roles('admin')
+  updateSettings(@GetTenantId() tenantId: string, @Body() dto: UpdateCreditSettingsDto) {
+    return this.creditService.updateSettings(tenantId, dto);
+  }
+
+  // ── MarketPlace: el propio cliente (sin @Roles: se valida clienteInout) ──
+  @Get('marketplace/me')
+  myCredit(@Req() req: Request) {
+    const { tenantId, customerId } = this.clientOf(req);
+    return this.creditService.myCredit(tenantId, customerId);
+  }
+
+  @Post('marketplace/request')
+  marketplaceRequest(@Req() req: Request, @Body() dto: MarketplaceCreditRequestDto) {
+    const { tenantId, customerId } = this.clientOf(req);
+    return this.creditService.marketplaceRequest(tenantId, actorOf(req), customerId, dto);
+  }
 
   // ── Cuentas de crédito ──
   @Get('accounts')
@@ -109,6 +149,12 @@ export class CreditController {
   @Roles('admin', 'operator')
   registerPayment(@GetTenantId() tenantId: string, @Req() req: Request, @Param('id') id: string, @Body() dto: RegisterPaymentDto) {
     return this.creditService.registerPayment(tenantId, actorOf(req), id, dto);
+  }
+
+  @Post('receivables/:id/remind')
+  @Roles('admin', 'operator')
+  remind(@GetTenantId() tenantId: string, @Param('id') id: string) {
+    return this.remindersService.sendManual(tenantId, id);
   }
 
   @Patch('receivables/:id/void')

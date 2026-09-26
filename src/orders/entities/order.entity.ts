@@ -65,6 +65,10 @@ export class Order {
   @Column({ type: 'timestamp', nullable: true })
   cancelledAt: Date;
 
+  /** Forma de pago que pidió el cliente en el MarketPlace ('CREDITO' si compró a crédito). */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  requestedPaymentType: string | null;
+
   /** Forma de pago al facturar: 'CONTADO' | 'CREDITO' (null mientras no se factura). */
   @Column({ type: 'varchar', length: 10, nullable: true })
   paymentType: string | null;

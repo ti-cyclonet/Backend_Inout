@@ -61,6 +61,25 @@ export class Receivable {
   @Column({ type: 'text', nullable: true })
   voidReason: string | null;
 
+  // ── Intereses de mora ──
+  /** Intereses causados y congelados hasta interestCalcDate. */
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  interestAccrued: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  interestPaid: number;
+
+  /** Fecha hasta la que ya se causaron intereses (se actualiza con cada abono). */
+  @Column({ type: 'date', nullable: true })
+  interestCalcDate: string | null;
+
+  // ── Recordatorios ──
+  @Column({ type: 'timestamp', nullable: true })
+  lastReminderAt: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  reminderCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

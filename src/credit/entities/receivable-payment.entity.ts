@@ -20,6 +20,14 @@ export class ReceivablePayment {
   @Column({ type: 'decimal', precision: 14, scale: 2 })
   amount: number;
 
+  /** Parte del abono imputada a intereses de mora (se imputa primero a intereses). */
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  interestPortion: number;
+
+  /** Parte del abono imputada a capital. */
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  capitalPortion: number;
+
   @Column({ type: 'varchar', length: 20 })
   method: PaymentMethod;
 
