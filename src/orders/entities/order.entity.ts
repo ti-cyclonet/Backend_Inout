@@ -128,6 +128,24 @@ export class Order {
   @Column({ type: 'boolean', default: false })
   refundPending: boolean;
 
+  // ─── Tiempos por etapa y cola (ver orders/order-timing.ts) ───
+
+  /** Cuándo entró a su etapa actual. Null en pedidos anteriores (se usa createdAt). */
+  @Column({ type: 'timestamptz', nullable: true })
+  stageEnteredAt: Date | null;
+
+  /** Hasta cuándo debería estar en la etapa actual (null = etapa sin duración configurada). */
+  @Column({ type: 'timestamptz', nullable: true })
+  stageDueAt: Date | null;
+
+  /** Horas de fabricación de sus unidades por fabricar (la mayor entre sus líneas). */
+  @Column({ type: 'int', nullable: true })
+  productionLeadHours: number | null;
+
+  /** Historial de etapas: tiempo real en cada una vs el esperado. */
+  @Column({ type: 'jsonb', nullable: true })
+  statusHistory: { status: string; enteredAt: string; leftAt?: string; expectedMinutes?: number | null }[] | null;
+
   /** Prueba de la aceptación de Términos y Tratamiento de Datos del comprador (MarketPlace). */
   @Column({ type: 'jsonb', nullable: true })
   consents: {

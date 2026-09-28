@@ -55,6 +55,7 @@ import { WarehouseLocation } from './warehouses/entities/warehouse-location.enti
 import { StockTransfer } from './warehouses/entities/stock-transfer.entity';
 import { PhysicalCount } from './warehouses/entities/physical-count.entity';
 import { OrderPayment } from './orders/entities/order-payment.entity';
+import { OrderSettings } from './orders/entities/order-settings.entity';
 
 @Module({
   imports: [
@@ -69,7 +70,7 @@ import { OrderPayment } from './orders/entities/order-payment.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
