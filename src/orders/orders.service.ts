@@ -20,6 +20,14 @@ import {
   resolvePaymentOptions,
 } from './payment-plans';
 import { randomBytes } from 'crypto';
+import { OrderSettings } from './entities/order-settings.entity';
+import {
+  estimateQueue,
+  OrderTimingSettings,
+  QueueOrder,
+  resolveTimingSettings,
+  stageDueAt,
+} from './order-timing';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
 export interface ConsentMeta {
@@ -36,10 +44,110 @@ export class OrdersService {
     private productRepository: Repository<Product>,
     @InjectRepository(InventoryMovement)
     private inventoryMovementRepository: Repository<InventoryMovement>,
+    @InjectRepository(OrderSettings)
+    private orderSettingsRepository: Repository<OrderSettings>,
     private dataSource: DataSource,
     private creditService: CreditService,
     private marketplaceConfigService: MarketplaceConfigService,
   ) {}
+
+  // ─── Tiempos por etapa y cola ───
+
+  async getTimingSettings(tenantId: string): Promise<OrderTimingSettings> {
+    const saved = await this.orderSettingsRepository.findOne({ where: { tenantId } });
+    return resolveTimingSettings(saved as any);
+  }
+
+  async updateTimingSettings(tenantId: string, body: Partial<OrderTimingSettings>): Promise<OrderTimingSettings> {
+    const settings = resolveTimingSettings(body);
+    const existing = await this.orderSettingsRepository.findOne({ where: { tenantId } });
+    await this.orderSettingsRepository.save({
+      ...(existing || {}),
+      tenantId,
+      stageDurations: settings.stageDurations as Record<string, number>,
+      productionCapacity: settings.productionCapacity,
+    });
+    return settings;
+  }
+
+  /** Registra la entrada del pedido a una etapa: hora, vencimiento e historial. */
+  private enterStage(order: Order, status: OrderStatus, settings: OrderTimingSettings, now = new Date()) {
+    const history = [...(order.statusHistory || [])];
+    const last = history[history.length - 1];
+    if (last && !last.leftAt) last.leftAt = now.toISOString();
+    const due = stageDueAt(settings, status, now, Number(order.productionLeadHours) || 0);
+    history.push({
+      status,
+      enteredAt: now.toISOString(),
+      expectedMinutes: due ? Math.round((due.getTime() - now.getTime()) / 60000) : null,
+    });
+    order.statusHistory = history;
+    order.stageEnteredAt = now;
+    order.stageDueAt = due;
+  }
+
+  private toQueueOrder(o: Order): QueueOrder {
+    return {
+      id: o.id,
+      status: o.status,
+      stageEnteredAt: o.stageEnteredAt || null,
+      createdAt: o.createdAt,
+      leadHours: Number(o.productionLeadHours) || 0,
+    };
+  }
+
+  /**
+   * Estado del kanban: vencimiento de la etapa de cada pedido activo y, para
+   * la cola de producción, posición, espera e inicio/fin estimados.
+   */
+  async getQueue(tenantId: string) {
+    const settings = await this.getTimingSettings(tenantId);
+    const active = await this.orderRepository.find({
+      where: [
+        { tenantId, status: OrderStatus.DRAFT },
+        { tenantId, status: OrderStatus.CONFIRMED },
+        { tenantId, status: OrderStatus.IN_PRODUCTION },
+        { tenantId, status: OrderStatus.READY },
+        { tenantId, status: OrderStatus.DELIVERED },
+      ],
+    });
+    const now = new Date();
+    const estimates = new Map(estimateQueue(active.map((o) => this.toQueueOrder(o)), settings, now).map((e) => [e.id, e]));
+    return {
+      settings,
+      orders: active.map((o) => {
+        const due = o.stageDueAt ? new Date(o.stageDueAt) : null;
+        const est = estimates.get(o.id);
+        return {
+          orderId: o.id,
+          status: o.status,
+          stageEnteredAt: o.stageEnteredAt,
+          stageDueAt: due,
+          // Positivo = atrasado; negativo = minutos que le quedan
+          overdueMinutes: due ? Math.round((now.getTime() - due.getTime()) / 60000) : null,
+          queuePosition: est?.queuePosition ?? null,
+          waitMinutes: est?.waitMinutes ?? null,
+          estimatedStartAt: est?.estimatedStartAt ?? null,
+          estimatedReadyAt: est?.estimatedReadyAt ?? null,
+        };
+      }),
+    };
+  }
+
+  /** Hora estimada de listo para un pedido que entra al final de la cola ahora. */
+  private async estimateReadyForNewOrder(tenantId: string, leadHours: number, settings: OrderTimingSettings): Promise<Date | null> {
+    const queued = await this.orderRepository.find({
+      where: [
+        { tenantId, status: OrderStatus.CONFIRMED },
+        { tenantId, status: OrderStatus.IN_PRODUCTION },
+      ],
+    });
+    const now = new Date();
+    const probe: QueueOrder = { id: '__new__', status: OrderStatus.CONFIRMED, stageEnteredAt: now, createdAt: now, leadHours };
+    const est = estimateQueue([...queued.map((o) => this.toQueueOrder(o)), probe], settings, now).find((e) => e.id === '__new__');
+    // Sin tiempos configurados ni fabricación, no hay estimado que dar
+    return est && est.estimatedReadyAt.getTime() > now.getTime() ? est.estimatedReadyAt : null;
+  }
 
   /** Plan de pago pedido: paymentPlan (nuevo) o paymentPreference (checkout anterior). */
   private requestedPlan(createDto: CreateMarketplaceOrderDto): PaymentPlan | null {
@@ -103,6 +211,7 @@ export class OrdersService {
       discount: createDto.discount || 0,
       total: createDto.total || 0,
     });
+    this.enterStage(order, OrderStatus.DRAFT, await this.getTimingSettings(tenantId));
 
     const savedOrder = await this.orderRepository.save(order);
     return { message: 'Pedido creado exitosamente', order: savedOrder };
@@ -186,6 +295,7 @@ export class OrdersService {
     const hasLocation = Number.isFinite(createDto.deliveryLatitude) && Number.isFinite(createDto.deliveryLongitude);
     const plan = this.requestedPlan(createDto);
     const options = plan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
+    const timing = await this.getTimingSettings(tenantId);
 
     return this.dataSource.transaction(async (manager) => {
       // Reserva lo disponible; lo que falte de productos "bajo pedido" queda por fabricar
@@ -219,9 +329,9 @@ export class OrdersService {
           : null,
         depositDeadline: terms?.depositDeadline || null,
         layawayDeadline: terms?.layawayDeadline || null,
-        estimatedReadyAt: stock.hasMadeToOrder && stock.maxLeadHours > 0
-          ? new Date(Date.now() + stock.maxLeadHours * 3600 * 1000)
-          : null,
+        productionLeadHours: stock.maxLeadHours || null,
+        // Incluye la espera por los pedidos que ya están en la cola
+        estimatedReadyAt: await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing),
         trackingToken: randomBytes(24).toString('hex'),
         deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
         deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,
@@ -233,6 +343,7 @@ export class OrdersService {
         total: createDto.total || 0,
         consents,
       });
+      this.enterStage(order, OrderStatus.CONFIRMED, timing);
       return manager.save(order);
     });
   }
@@ -401,6 +512,7 @@ export class OrdersService {
       // Los productos "bajo pedido" pueden confirmarse sin stock (quedan por fabricar).
       const stock = await this.dataSource.transaction((manager) => reserveOrderStock(manager, tenantId, order.items));
       order.items = stock.items;
+      order.productionLeadHours = stock.maxLeadHours || null;
     }
 
     // Anticipo: no se fabrica ni se prepara sin el anticipo verificado
@@ -477,6 +589,7 @@ export class OrdersService {
     }
 
     order.status = newStatus;
+    this.enterStage(order, newStatus, await this.getTimingSettings(tenantId));
     if (newStatus === OrderStatus.CANCELLED) {
       order.cancellationReason = cancellationReason;
       order.cancelledAt = new Date();

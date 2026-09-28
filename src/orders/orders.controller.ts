@@ -42,6 +42,24 @@ export class OrdersController {
     return this.ordersService.getStats(tenantId);
   }
 
+  /** Kanban: vencimiento por etapa y estimados de la cola de producción. */
+  @Get('queue')
+  getQueue(@GetTenantId() tenantId: string) {
+    return this.ordersService.getQueue(tenantId);
+  }
+
+  /** Tiempos por etapa y capacidad de producción del negocio. */
+  @Get('settings/timing')
+  getTimingSettings(@GetTenantId() tenantId: string) {
+    return this.ordersService.getTimingSettings(tenantId);
+  }
+
+  @Patch('settings/timing')
+  @Roles('admin')
+  updateTimingSettings(@Body() body: any, @GetTenantId() tenantId: string) {
+    return this.ordersService.updateTimingSettings(tenantId, body);
+  }
+
   /** Unidades por fabricar de los pedidos activos (productos "bajo pedido"). */
   @Get('to-manufacture')
   findToManufacture(@GetTenantId() tenantId: string) {

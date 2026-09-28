@@ -9,13 +9,14 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 import { CreditModule } from '../credit/credit.module';
 import { OrderPayment } from './entities/order-payment.entity';
+import { OrderSettings } from './entities/order-settings.entity';
 import { OrderPaymentsService } from './order-payments.service';
 import { MarketplaceConfigModule } from '../marketplace-config/marketplace-config.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, Product, InventoryMovement, OrderPayment]),
+    TypeOrmModule.forFeature([Order, Product, InventoryMovement, OrderPayment, OrderSettings]),
     UsageCountersModule,
     CreditModule,
     MarketplaceConfigModule,
