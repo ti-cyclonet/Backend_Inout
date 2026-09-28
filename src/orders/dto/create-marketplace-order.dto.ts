@@ -1,5 +1,6 @@
 import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PAYMENT_PLANS } from '../payment-plans';
 
 export class MarketplaceOrderItemDto {
   @IsString()
@@ -91,6 +92,11 @@ export class CreateMarketplaceOrderDto {
   @IsOptional()
   @IsIn(['CONTADO', 'CREDITO'])
   paymentPreference?: 'CONTADO' | 'CREDITO';
+
+  /** Forma de pago elegida (reemplaza a paymentPreference): debe estar activa en la tienda. */
+  @IsOptional()
+  @IsIn(PAYMENT_PLANS as unknown as string[])
+  paymentPlan?: string;
 
   /** Ubicación exacta de entrega capturada con el GPS del comprador (opcional). */
   @IsOptional()

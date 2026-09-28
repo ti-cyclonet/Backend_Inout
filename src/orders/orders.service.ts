@@ -7,7 +7,19 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
 import { CreditService } from '../credit/credit.service';
-import { applyStockDelta, assertStockAvailable, movementTarget, resolveStockLines } from '../common/stock-availability';
+import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
+import { reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
+import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
+import {
+  balanceDue,
+  computePaymentStatus,
+  computePlanTerms,
+  isDepositCovered,
+  PaymentPlan,
+  PLANS_WITH_DEPOSIT,
+  resolvePaymentOptions,
+} from './payment-plans';
+import { randomBytes } from 'crypto';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
 export interface ConsentMeta {
@@ -26,7 +38,14 @@ export class OrdersService {
     private inventoryMovementRepository: Repository<InventoryMovement>,
     private dataSource: DataSource,
     private creditService: CreditService,
+    private marketplaceConfigService: MarketplaceConfigService,
   ) {}
+
+  /** Plan de pago pedido: paymentPlan (nuevo) o paymentPreference (checkout anterior). */
+  private requestedPlan(createDto: CreateMarketplaceOrderDto): PaymentPlan | null {
+    if (createDto.paymentPlan) return createDto.paymentPlan as PaymentPlan;
+    return createDto.paymentPreference === 'CREDITO' ? 'CREDITO' : null;
+  }
 
   private async getContractPrefix(tenantId: string): Promise<string> {
     try {
@@ -118,7 +137,7 @@ export class OrdersService {
   async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
     // Compra a crédito: el cliente debe tener cupo disponible y estar al día.
     // La cuenta por cobrar se crea al facturar el pedido.
-    if (createDto.paymentPreference === 'CREDITO') {
+    if (this.requestedPlan(createDto) === 'CREDITO') {
       await this.creditService.assertCanRequestCreditPurchase(createDto.tenantId, authUserId, Number(createDto.total) || 0);
     }
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
@@ -165,9 +184,21 @@ export class OrdersService {
         }
       : null;
     const hasLocation = Number.isFinite(createDto.deliveryLatitude) && Number.isFinite(createDto.deliveryLongitude);
+    const plan = this.requestedPlan(createDto);
+    const options = plan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
 
     return this.dataSource.transaction(async (manager) => {
-      const resolved = await assertStockAvailable(manager, tenantId, createDto.items);
+      // Reserva lo disponible; lo que falte de productos "bajo pedido" queda por fabricar
+      const stock = await reserveOrderStock(manager, tenantId, createDto.items);
+
+      // Condiciones del plan (montos y plazos calculados aquí, nunca del cliente)
+      const terms = plan
+        ? computePlanTerms(plan, options!, {
+            total: Number(createDto.total) || 0,
+            hasAccount: !!customer.customerId,
+            hasMadeToOrder: stock.hasMadeToOrder,
+          })
+        : null;
 
       const orderCode = await this.generateOrderCode(tenantId);
       const order = manager.create(Order, {
@@ -179,10 +210,22 @@ export class OrdersService {
         customerPhone: createDto.customerPhone?.trim() || null,
         customerEmail: createDto.customerEmail?.trim() || null,
         customerAddress: createDto.customerAddress?.trim() || null,
-        requestedPaymentType: customer.customerId && createDto.paymentPreference === 'CREDITO' ? 'CREDITO' : null,
+        requestedPaymentType: customer.customerId && plan === 'CREDITO' ? 'CREDITO' : null,
+        paymentPlan: plan,
+        depositRequired: terms?.depositRequired || 0,
+        amountPaid: 0,
+        paymentStatus: plan
+          ? computePaymentStatus({ total: Number(createDto.total) || 0, depositRequired: terms?.depositRequired || 0, amountPaid: 0 })
+          : null,
+        depositDeadline: terms?.depositDeadline || null,
+        layawayDeadline: terms?.layawayDeadline || null,
+        estimatedReadyAt: stock.hasMadeToOrder && stock.maxLeadHours > 0
+          ? new Date(Date.now() + stock.maxLeadHours * 3600 * 1000)
+          : null,
+        trackingToken: randomBytes(24).toString('hex'),
         deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
         deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,
-        items: createDto.items,
+        items: stock.items,
         notes: createDto.notes || null,
         subtotal: createDto.subtotal || 0,
         tax: createDto.tax || 0,
@@ -190,11 +233,7 @@ export class OrdersService {
         total: createDto.total || 0,
         consents,
       });
-      const savedOrder = await manager.save(order);
-
-      await applyStockDelta(manager, tenantId, resolved, { reserved: 1 });
-
-      return savedOrder;
+      return manager.save(order);
     });
   }
 
@@ -247,6 +286,40 @@ export class OrdersService {
       customerPhone: last.customerPhone || null,
       customerAddress: last.customerAddress || null,
     };
+  }
+
+  /**
+   * Unidades por fabricar de los pedidos activos, agrupadas por producto, para
+   * planear los lotes de producción.
+   */
+  async findToManufacture(tenantId: string) {
+    const orders = await this.orderRepository.find({
+      where: [
+        { tenantId, status: OrderStatus.CONFIRMED },
+        { tenantId, status: OrderStatus.IN_PRODUCTION },
+      ],
+      order: { createdAt: 'ASC' },
+    });
+
+    const byProduct = new Map<string, { productId: string; productName: string; quantity: number; orders: any[] }>();
+    for (const order of orders) {
+      for (const item of order.items || []) {
+        const qty = toManufactureOf(item as any);
+        if (qty <= 0) continue;
+        const entry = byProduct.get(item.productId) || { productId: item.productId, productName: item.productName, quantity: 0, orders: [] };
+        entry.quantity += qty;
+        entry.orders.push({
+          orderId: order.id,
+          orderCode: order.orderCode,
+          status: order.status,
+          quantity: qty,
+          depositCovered: isDepositCovered({ depositRequired: Number(order.depositRequired), amountPaid: Number(order.amountPaid) }),
+          estimatedReadyAt: order.estimatedReadyAt,
+        });
+        byProduct.set(item.productId, entry);
+      }
+    }
+    return { data: [...byProduct.values()] };
   }
 
   async findAll(tenantId: string) {
@@ -325,16 +398,36 @@ export class OrdersService {
       // reservan en saveMarketplaceOrder() porque nacen directo en CONFIRMED).
       // Un borrador puede crearse sin stock (sirve de cotización), pero NO se
       // confirma si no hay stock disponible para todos sus ítems.
-      await this.dataSource.transaction(async (manager) => {
-        const resolved = await assertStockAvailable(manager, tenantId, order.items);
-        await applyStockDelta(manager, tenantId, resolved, { reserved: 1 });
-      });
+      // Los productos "bajo pedido" pueden confirmarse sin stock (quedan por fabricar).
+      const stock = await this.dataSource.transaction((manager) => reserveOrderStock(manager, tenantId, order.items));
+      order.items = stock.items;
+    }
+
+    // Anticipo: no se fabrica ni se prepara sin el anticipo verificado
+    if (newStatus === OrderStatus.IN_PRODUCTION && order.paymentPlan && PLANS_WITH_DEPOSIT.includes(order.paymentPlan as PaymentPlan)
+      && !isDepositCovered({ depositRequired: Number(order.depositRequired), amountPaid: Number(order.amountPaid) })) {
+      throw new BadRequestException(
+        `Falta el anticipo verificado ($${Number(order.depositRequired).toLocaleString('es-CO')}) para iniciar la preparación.`,
+      );
+    }
+
+    // Listo: lo que estaba por fabricar ya debe estar en stock (lote de producción)
+    if (newStatus === OrderStatus.READY && (order.items || []).some((i) => toManufactureOf(i as any) > 0)) {
+      order.items = await this.dataSource.transaction((manager) => reserveManufactured(manager, tenantId, order.items));
+    }
+
+    // Plan separe: solo se entrega pagado al 100 %
+    if (newStatus === OrderStatus.DELIVERED && order.paymentPlan === 'PLAN_SEPARE' && balanceDue(order) > 0) {
+      throw new BadRequestException(
+        `El plan separe se entrega pagado al 100 %. Saldo pendiente: $${balanceDue(order).toLocaleString('es-CO')}.`,
+      );
     }
 
     // Liberar stock reservado si se cancela un pedido que aún no fue entregado
     // (si ya fue DELIVERED, la reserva ya se liberó al entregar — ver abajo)
     if (newStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.DRAFT && previousStatus !== OrderStatus.DELIVERED) {
-      const resolved = await resolveStockLines(this.dataSource.manager, tenantId, order.items, { skipMissing: true });
+      // Solo lo reservado: lo que estaba por fabricar nunca se apartó
+      const resolved = await resolveStockLines(this.dataSource.manager, tenantId, reservedLines(order.items as any), { skipMissing: true });
       await applyStockDelta(this.dataSource.manager, tenantId, resolved, { reserved: -1 });
     }
 
@@ -387,12 +480,20 @@ export class OrdersService {
     if (newStatus === OrderStatus.CANCELLED) {
       order.cancellationReason = cancellationReason;
       order.cancelledAt = new Date();
+      // Con pagos verificados el negocio debe decidir la devolución
+      if (Number(order.amountPaid) > 0) order.refundPending = true;
     }
 
     // Facturar: forma de pago. A crédito se valida el cupo y se crea la
     // cuenta por cobrar en la misma transacción que el cambio de estado.
     if (newStatus === OrderStatus.INVOICED) {
       const isCredit = payment.paymentType === 'CREDITO';
+      const pending = balanceDue(order);
+      if (order.paymentPlan && !isCredit && pending > 0) {
+        throw new BadRequestException(
+          `Registra el saldo pendiente ($${pending.toLocaleString('es-CO')}) antes de facturar, o factura el saldo a crédito.`,
+        );
+      }
       order.paymentType = isCredit ? 'CREDITO' : 'CONTADO';
       order.paymentMethod = isCredit ? null : (payment.paymentMethod || 'EFECTIVO');
       order.invoicedAt = new Date();
@@ -404,7 +505,8 @@ export class OrdersService {
             sourceType: 'ORDER',
             sourceId: order.id,
             documentCode: order.orderCode,
-            amount: Number(order.total) || 0,
+            // Si ya hubo anticipos/abonos, a crédito queda solo el saldo
+            amount: order.paymentPlan ? pending : Number(order.total) || 0,
           });
           return manager.save(order);
         });

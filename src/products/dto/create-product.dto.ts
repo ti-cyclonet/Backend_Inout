@@ -76,4 +76,14 @@ export class CreateProductDto {
   @IsBoolean()
   @IsOptional()
   blnMarketplaceVisible?: boolean;
+
+  /** Fabricación bajo pedido: se puede pedir sin stock. */
+  @IsBoolean()
+  @IsOptional()
+  blnMadeToOrder?: boolean;
+
+  /** Horas que toma fabricarlo. */
+  @IsNumber()
+  @IsOptional()
+  intProductionLeadHours?: number;
 }

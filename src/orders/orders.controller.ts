@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -10,6 +11,8 @@ import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcemen
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { BusinessParamsService } from '../config/business-params.service';
+import { OrderPaymentsService } from './order-payments.service';
+import { OrderPaymentDto, ReviewOrderPaymentDto } from './dto/order-payment.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -17,6 +20,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly businessParamsService: BusinessParamsService,
+    private readonly orderPaymentsService: OrderPaymentsService,
   ) {}
 
   @Post()
@@ -36,6 +40,42 @@ export class OrdersController {
   @Get('stats')
   getStats(@GetTenantId() tenantId: string) {
     return this.ordersService.getStats(tenantId);
+  }
+
+  /** Unidades por fabricar de los pedidos activos (productos "bajo pedido"). */
+  @Get('to-manufacture')
+  findToManufacture(@GetTenantId() tenantId: string) {
+    return this.ordersService.findToManufacture(tenantId);
+  }
+
+  @Get(':id/payments')
+  listPayments(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    return this.orderPaymentsService.listForOrder(tenantId, id);
+  }
+
+  /** Pago registrado por el negocio (nace verificado). */
+  @Post(':id/payments')
+  @Roles('admin', 'operator')
+  registerPayment(
+    @Param('id') id: string,
+    @Body() dto: OrderPaymentDto,
+    @GetTenantId() tenantId: string,
+    @Req() req: Request,
+  ) {
+    return this.orderPaymentsService.registerByBusiness(tenantId, (req.user as any)?.id, id, dto);
+  }
+
+  /** Verificar o rechazar un comprobante subido por el cliente. */
+  @Patch(':id/payments/:paymentId')
+  @Roles('admin', 'operator')
+  reviewPayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: ReviewOrderPaymentDto,
+    @GetTenantId() tenantId: string,
+    @Req() req: Request,
+  ) {
+    return this.orderPaymentsService.review(tenantId, (req.user as any)?.id, id, paymentId, dto.action, dto.reason);
   }
 
   @Get('status/:status')

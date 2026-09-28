@@ -1,12 +1,35 @@
-import { Controller, Post, Get, Body, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Req, UseGuards, ForbiddenException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OrderPaymentsService } from './order-payments.service';
+import { OrderPaymentDto } from './dto/order-payment.dto';
 
 @Controller('orders')
 export class OrdersMarketplaceController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly orderPaymentsService: OrderPaymentsService,
+  ) {}
+
+  /** Seguimiento del pedido con el enlace que recibe el comprador (sirve sin cuenta). */
+  @Get('marketplace/track/:token')
+  track(@Param('token') token: string) {
+    return this.orderPaymentsService.track(token);
+  }
+
+  /** El comprador sube el comprobante de un pago (queda por verificar). */
+  @Post('marketplace/track/:token/payments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  submitPayment(
+    @Param('token') token: string,
+    @Body() dto: OrderPaymentDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.orderPaymentsService.submitByCustomer(token, dto, file);
+  }
 
   /** Origen de la aceptación de términos/datos (se guarda con el pedido). */
   private requestMeta(req: Request) {

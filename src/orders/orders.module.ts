@@ -8,11 +8,21 @@ import { Product } from '../products/entities/product.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 import { CreditModule } from '../credit/credit.module';
+import { OrderPayment } from './entities/order-payment.entity';
+import { OrderPaymentsService } from './order-payments.service';
+import { MarketplaceConfigModule } from '../marketplace-config/marketplace-config.module';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Order, Product, InventoryMovement]), UsageCountersModule, CreditModule],
+  imports: [
+    TypeOrmModule.forFeature([Order, Product, InventoryMovement, OrderPayment]),
+    UsageCountersModule,
+    CreditModule,
+    MarketplaceConfigModule,
+    CloudinaryModule,
+  ],
   controllers: [OrdersMarketplaceController, OrdersController],
-  providers: [OrdersService],
-  exports: [OrdersService],
+  providers: [OrdersService, OrderPaymentsService],
+  exports: [OrdersService, OrderPaymentsService],
 })
 export class OrdersModule {}
