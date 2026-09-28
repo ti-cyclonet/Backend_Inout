@@ -35,6 +35,10 @@ export class MarketplaceConfig {
   @Column({ type: 'varchar', length: 10, default: 'grid' })
   displayMode: string;
 
+  /** Formas de pago que ofrece la tienda (ver orders/payment-plans.ts). Null = valores por defecto. */
+  @Column({ type: 'json', nullable: true })
+  paymentOptions: Record<string, any> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

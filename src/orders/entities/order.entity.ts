@@ -49,8 +49,19 @@ export class Order {
   status: OrderStatus;
 
   @Column({ type: 'jsonb', nullable: true })
-  /** itemType: 'product' (default si falta) | 'material' | 'material_t' (reventa, quantity en presentaciones). */
-  items: { productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; itemType?: string }[];
+  /** itemType: 'product' (default si falta) | 'material' | 'material_t' (reventa, quantity en presentaciones).
+   * reservedQuantity / toManufacture: fabricación bajo pedido (ver common/order-stock.ts);
+   * sin esos campos la línea se considera totalmente reservada. */
+  items: {
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+    itemType?: string;
+    reservedQuantity?: number;
+    toManufacture?: number;
+  }[];
 
   @Column({ type: 'text', nullable: true })
   notes: string;
@@ -78,6 +89,44 @@ export class Order {
 
   @Column({ type: 'timestamp', nullable: true })
   invoicedAt: Date | null;
+
+  // ─── Formas de pago del MarketPlace (ver orders/payment-plans.ts) ───
+
+  /** CONTADO | CONTRA_ENTREGA | MITAD_MITAD | PLAN_SEPARE | CREDITO. Null = pedido anterior o del panel. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  paymentPlan: string | null;
+
+  /** Monto que debe estar verificado antes de fabricar o despachar. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  depositRequired: number;
+
+  /** Suma de pagos VERIFICADOS (se recalcula desde order_payments; no se edita a mano). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  amountPaid: number;
+
+  /** SIN_PAGO | ANTICIPO_PENDIENTE | ANTICIPO_CUBIERTO | PARCIAL | PAGADO */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  paymentStatus: string | null;
+
+  /** Si el anticipo no está verificado a esta hora, el pedido se cancela y libera stock. */
+  @Column({ type: 'timestamptz', nullable: true })
+  depositDeadline: Date | null;
+
+  /** Plan separe: fecha límite para completar el pago (YYYY-MM-DD). */
+  @Column({ type: 'date', nullable: true })
+  layawayDeadline: string | null;
+
+  /** Estimado de cuándo estará listo (hay unidades por fabricar). */
+  @Column({ type: 'timestamptz', nullable: true })
+  estimatedReadyAt: Date | null;
+
+  /** Token del enlace de seguimiento: el comprador (aun invitado) ve su pedido y sube comprobantes. */
+  @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
+  trackingToken: string | null;
+
+  /** Se canceló con pagos verificados: el negocio debe decidir la devolución. */
+  @Column({ type: 'boolean', default: false })
+  refundPending: boolean;
 
   /** Prueba de la aceptación de Términos y Tratamiento de Datos del comprador (MarketPlace). */
   @Column({ type: 'jsonb', nullable: true })

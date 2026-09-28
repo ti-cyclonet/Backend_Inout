@@ -59,6 +59,15 @@ export class Product {
   @Column({ type: 'boolean', nullable: false, default: true })
   blnMarketplaceVisible: boolean;
 
+  /** Fabricación bajo pedido: se puede pedir sin stock; el faltante queda
+   * "por fabricar" en el pedido (ver common/order-stock.ts). */
+  @Column({ type: 'boolean', nullable: false, default: false })
+  blnMadeToOrder: boolean;
+
+  /** Horas que toma fabricarlo (para estimar cuándo estará listo un pedido). */
+  @Column({ type: 'int', nullable: true })
+  intProductionLeadHours: number | null;
+
   @ManyToOne(() => Category)
   @JoinColumn({ name: 'intCategoryId' })
   category: Category;

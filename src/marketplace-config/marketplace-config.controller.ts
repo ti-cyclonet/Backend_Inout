@@ -1,7 +1,8 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { MarketplaceConfigService } from './marketplace-config.service';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { resolvePaymentOptions } from '../orders/payment-plans';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -43,6 +44,22 @@ export class MarketplaceConfigController {
       throw new Error('No tienes permisos para modificar este marketplace');
     }
     return await this.marketplaceConfigService.updateSlug(tenantId, body.slug);
+  }
+
+  /** Formas de pago que ofrece la tienda (público: las usa el checkout). */
+  @Get(':tenantId/payment-options')
+  async getPaymentOptions(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return resolvePaymentOptions(config?.paymentOptions);
+  }
+
+  @Patch(':tenantId/payment-options')
+  @UseGuards(JwtAuthGuard)
+  async updatePaymentOptions(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.updatePaymentOptions(tenantId, resolvePaymentOptions(body));
   }
 
   @Get(':tenantId')

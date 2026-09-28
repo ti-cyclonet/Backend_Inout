@@ -1,4 +1,4 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MarketplaceConfig } from './entities/marketplace-config.entity';
@@ -38,6 +38,17 @@ export class MarketplaceConfigService {
     }
 
     return await this.marketplaceConfigRepository.save(config);
+  }
+
+  /** Guarda las formas de pago (ya normalizadas con resolvePaymentOptions). */
+  async updatePaymentOptions(tenantId: string, paymentOptions: Record<string, any>) {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego sus formas de pago.');
+    }
+    config.paymentOptions = paymentOptions;
+    await this.marketplaceConfigRepository.save(config);
+    return paymentOptions;
   }
 
   async getConfig(tenantId: string): Promise<MarketplaceConfig | null> {
