@@ -26,6 +26,24 @@ export class MarketplaceOrderItemDto {
   itemType?: string;
 }
 
+/** Franjas disponibles de un día para lo que hay en el carrito. */
+export class MarketplaceSlotsQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  /** 'YYYY-MM-DD' (hora de Colombia) */
+  @IsString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MarketplaceOrderItemDto)
+  items?: MarketplaceOrderItemDto[];
+}
+
 export class CreateMarketplaceOrderDto {
   @IsString()
   @IsNotEmpty()
@@ -92,6 +110,11 @@ export class CreateMarketplaceOrderDto {
   @IsOptional()
   @IsIn(['CONTADO', 'CREDITO'])
   paymentPreference?: 'CONTADO' | 'CREDITO';
+
+  /** Pedido programado: inicio de la franja elegida (ISO). Sin él, "lo antes posible". */
+  @IsOptional()
+  @IsString()
+  scheduledStart?: string;
 
   /** Forma de pago elegida (reemplaza a paymentPreference): debe estar activa en la tienda. */
   @IsOptional()

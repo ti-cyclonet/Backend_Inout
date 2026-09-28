@@ -39,6 +39,10 @@ export class MarketplaceConfig {
   @Column({ type: 'json', nullable: true })
   paymentOptions: Record<string, any> | null;
 
+  /** Pedidos programados: horario de entregas, franjas y cupos (ver orders/scheduling.ts). */
+  @Column({ type: 'json', nullable: true })
+  scheduling: Record<string, any> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

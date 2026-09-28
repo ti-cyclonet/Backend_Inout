@@ -1,14 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, Between, In, Not } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
+import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/create-marketplace-order.dto';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
-import { reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
+import { previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
+import { assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import {
   balanceDue,
@@ -93,7 +94,64 @@ export class OrdersService {
       stageEnteredAt: o.stageEnteredAt || null,
       createdAt: o.createdAt,
       leadHours: Number(o.productionLeadHours) || 0,
+      scheduledStart: o.scheduledStart ? new Date(o.scheduledStart) : null,
     };
+  }
+
+  // ─── Pedidos programados ───
+
+  /** Pedidos ya programados en un día, por inicio de franja (para el cupo). */
+  private async takenSlots(tenantId: string, date: string): Promise<Map<number, number>> {
+    const rows = await this.orderRepository.find({
+      where: {
+        tenantId,
+        status: Not(OrderStatus.CANCELLED),
+        scheduledStart: Between(bogotaToUtc(date, 0), bogotaToUtc(date, 24 * 60)),
+      },
+      select: ['id', 'scheduledStart'],
+    });
+    const taken = new Map<number, number>();
+    for (const r of rows) {
+      const k = new Date(r.scheduledStart!).getTime();
+      taken.set(k, (taken.get(k) || 0) + 1);
+    }
+    return taken;
+  }
+
+  /**
+   * Franjas de un día para lo que hay en el carrito: considera la cola de
+   * producción y el tiempo de fabricación de lo que falte en stock.
+   */
+  async getMarketplaceSlots(query: MarketplaceSlotsQueryDto) {
+    const config = await this.marketplaceConfigService.getConfig(query.tenantId);
+    const scheduling = resolveScheduling(config?.scheduling);
+    if (!scheduling.enabled) return { enabled: false, date: query.date, earliestReadyAt: null, slots: [] };
+
+    const preview = await previewOrderStock(this.dataSource.manager, query.tenantId, query.items || []);
+    const timing = await this.getTimingSettings(query.tenantId);
+    const earliestReadyAt = await this.estimateReadyForNewOrder(query.tenantId, preview.maxLeadHours, timing);
+    const slots = buildSlots(query.date, scheduling, {
+      now: new Date(),
+      earliestReadyAt,
+      takenBySlotStart: await this.takenSlots(query.tenantId, query.date),
+    });
+    return { enabled: true, date: query.date, earliestReadyAt, slots };
+  }
+
+  /** Agenda del panel: pedidos programados entre dos fechas (YYYY-MM-DD, hora de Colombia). */
+  async getAgenda(tenantId: string, from?: string, to?: string) {
+    const valid = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
+    const start = valid(from) || bogotaDate(new Date());
+    const end = valid(to) || start;
+    const orders = await this.orderRepository.find({
+      where: {
+        tenantId,
+        status: Not(In([OrderStatus.CANCELLED])),
+        scheduledStart: Between(bogotaToUtc(start, 0), bogotaToUtc(end, 24 * 60)),
+      },
+      order: { scheduledStart: 'ASC' },
+    });
+    return { from: start, to: end, data: orders };
   }
 
   /**
@@ -125,6 +183,8 @@ export class OrdersService {
           stageDueAt: due,
           // Positivo = atrasado; negativo = minutos que le quedan
           overdueMinutes: due ? Math.round((now.getTime() - due.getTime()) / 60000) : null,
+          scheduledStart: o.scheduledStart,
+          scheduledEnd: o.scheduledEnd,
           queuePosition: est?.queuePosition ?? null,
           waitMinutes: est?.waitMinutes ?? null,
           estimatedStartAt: est?.estimatedStartAt ?? null,
@@ -296,6 +356,7 @@ export class OrdersService {
     const plan = this.requestedPlan(createDto);
     const options = plan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
     const timing = await this.getTimingSettings(tenantId);
+    const marketplaceConfig = createDto.scheduledStart ? await this.marketplaceConfigService.getConfig(tenantId) : null;
 
     return this.dataSource.transaction(async (manager) => {
       // Reserva lo disponible; lo que falte de productos "bajo pedido" queda por fabricar
@@ -307,6 +368,16 @@ export class OrdersService {
             total: Number(createDto.total) || 0,
             hasAccount: !!customer.customerId,
             hasMadeToOrder: stock.hasMadeToOrder,
+          })
+        : null;
+
+      // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
+      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing);
+      const slot = createDto.scheduledStart
+        ? assertSlotAvailable(createDto.scheduledStart, resolveScheduling(marketplaceConfig?.scheduling), {
+            now: new Date(),
+            earliestReadyAt,
+            takenBySlotStart: await this.takenSlots(tenantId, bogotaDate(new Date(createDto.scheduledStart))),
           })
         : null;
 
@@ -331,7 +402,9 @@ export class OrdersService {
         layawayDeadline: terms?.layawayDeadline || null,
         productionLeadHours: stock.maxLeadHours || null,
         // Incluye la espera por los pedidos que ya están en la cola
-        estimatedReadyAt: await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing),
+        estimatedReadyAt: earliestReadyAt,
+        scheduledStart: slot?.start || null,
+        scheduledEnd: slot?.end || null,
         trackingToken: randomBytes(24).toString('hex'),
         deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
         deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,

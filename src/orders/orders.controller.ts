@@ -42,6 +42,12 @@ export class OrdersController {
     return this.ordersService.getStats(tenantId);
   }
 
+  /** Pedidos programados entre dos fechas (?from=YYYY-MM-DD&to=YYYY-MM-DD). */
+  @Get('agenda')
+  getAgenda(@Query('from') from: string, @Query('to') to: string, @GetTenantId() tenantId: string) {
+    return this.ordersService.getAgenda(tenantId, from, to);
+  }
+
   /** Kanban: vencimiento por etapa y estimados de la cola de producción. */
   @Get('queue')
   getQueue(@GetTenantId() tenantId: string) {

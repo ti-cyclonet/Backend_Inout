@@ -142,6 +142,13 @@ export class Order {
   @Column({ type: 'int', nullable: true })
   productionLeadHours: number | null;
 
+  /** Pedido programado: franja de entrega elegida (null = lo antes posible). */
+  @Column({ type: 'timestamptz', nullable: true })
+  scheduledStart: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  scheduledEnd: Date | null;
+
   /** Historial de etapas: tiempo real en cada una vs el esperado. */
   @Column({ type: 'jsonb', nullable: true })
   statusHistory: { status: string; enteredAt: string; leftAt?: string; expectedMinutes?: number | null }[] | null;

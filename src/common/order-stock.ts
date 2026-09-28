@@ -118,6 +118,32 @@ export async function reserveOrderStock<T extends OrderStockItem>(
 }
 
 /**
+ * Vista previa sin bloquear ni reservar: qué habría que fabricar y cuánto
+ * tarda. Sirve para ofrecer franjas antes de crear el pedido; la validación
+ * real ocurre al crearlo (reserveOrderStock).
+ */
+export async function previewOrderStock(
+  manager: EntityManager,
+  tenantId: string,
+  items: StockLine[],
+): Promise<{ hasMadeToOrder: boolean; maxLeadHours: number }> {
+  const resolved = await resolveStockLines(manager, tenantId, items, { skipMissing: true });
+  const used = new Map<string, number>();
+  let hasMadeToOrder = false;
+  let maxLeadHours = 0;
+  for (const line of resolved) {
+    const key = `${line.itemType}:${line.id}`;
+    const available = Number(line.entity.ingQuantity || 0) - Number(line.entity.ingReservedStock || 0) - (used.get(key) || 0);
+    used.set(key, (used.get(key) || 0) + line.baseQuantity);
+    if (available < line.baseQuantity && line.itemType === 'product' && line.entity.blnMadeToOrder) {
+      hasMadeToOrder = true;
+      maxLeadHours = Math.max(maxLeadHours, Number(line.entity.intProductionLeadHours) || 0);
+    }
+  }
+  return { hasMadeToOrder, maxLeadHours };
+}
+
+/**
  * Al pasar a READY: lo que estaba por fabricar ya debe estar en stock (el lote
  * de producción lo sumó). Se reserva y la línea queda completa.
  */
