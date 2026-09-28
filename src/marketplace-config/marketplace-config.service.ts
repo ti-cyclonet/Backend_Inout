@@ -51,6 +51,17 @@ export class MarketplaceConfigService {
     return paymentOptions;
   }
 
+  /** Guarda la programación de pedidos (ya normalizada con resolveScheduling). */
+  async updateScheduling(tenantId: string, scheduling: Record<string, any>) {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego sus pedidos programados.');
+    }
+    config.scheduling = scheduling;
+    await this.marketplaceConfigRepository.save(config);
+    return scheduling;
+  }
+
   async getConfig(tenantId: string): Promise<MarketplaceConfig | null> {
     return await this.marketplaceConfigRepository.findOne({
       where: { tenantId },

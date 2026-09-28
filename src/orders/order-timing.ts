@@ -68,6 +68,8 @@ export interface QueueOrder {
   createdAt: Date;
   /** Mayor tiempo de fabricación (h) de sus líneas por fabricar. */
   leadHours: number;
+  /** Pedido programado: inicio de su franja de entrega. */
+  scheduledStart?: Date | null;
 }
 
 export interface QueueEstimate {
@@ -107,10 +109,16 @@ export function estimateQueue(orders: QueueOrder[], settings: OrderTimingSetting
   // real se libera cuando terminan los que sobran, no cuando termina el primero.
   while (lanes.length > capacity) lanes.shift();
 
-  const waiting = orders.filter((o) => o.status === OrderStatus.CONFIRMED).sort((a, b) => entered(a) - entered(b));
+  // Un pedido programado no se prepara antes de tiempo: entra a producción
+  // justo para estar listo al inicio de su franja. Se atiende por esa hora, no
+  // por la de llegada, para no retrasar a los pedidos "lo antes posible".
+  const notBefore = (o: QueueOrder) =>
+    o.scheduledStart ? o.scheduledStart.getTime() - productionMinutes(settings, o.leadHours) * 60000 : null;
+  const priority = (o: QueueOrder) => Math.max(entered(o), notBefore(o) ?? 0);
+  const waiting = orders.filter((o) => o.status === OrderStatus.CONFIRMED).sort((a, b) => priority(a) - priority(b));
   waiting.forEach((o, i) => {
     lanes.sort((a, b) => a - b);
-    const start = Math.max(t0, lanes[0]);
+    const start = Math.max(t0, lanes[0], notBefore(o) ?? 0);
     const end = start + productionMinutes(settings, o.leadHours) * 60000;
     lanes[0] = end;
     result.push({

@@ -3,6 +3,7 @@ import { MarketplaceConfigService } from './marketplace-config.service';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { resolvePaymentOptions } from '../orders/payment-plans';
+import { resolveScheduling } from '../orders/scheduling';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -60,6 +61,22 @@ export class MarketplaceConfigController {
       throw new ForbiddenException('No tienes permisos para modificar este marketplace');
     }
     return this.marketplaceConfigService.updatePaymentOptions(tenantId, resolvePaymentOptions(body));
+  }
+
+  /** Programación de pedidos de la tienda (público: la usa el checkout). */
+  @Get(':tenantId/scheduling')
+  async getScheduling(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return resolveScheduling(config?.scheduling);
+  }
+
+  @Patch(':tenantId/scheduling')
+  @UseGuards(JwtAuthGuard)
+  async updateScheduling(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.updateScheduling(tenantId, resolveScheduling(body));
   }
 
   @Get(':tenantId')

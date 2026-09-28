@@ -88,6 +88,15 @@ describe('estimateQueue', () => {
     expect(q.find((e) => e.id === 'a')!.waitMinutes).toBe(40);
   });
 
+  it('un pedido programado entra a producción justo a tiempo y no retrasa a los demás', () => {
+    const programado: QueueOrder = { ...order('prog', OrderStatus.CONFIRMED, 30), scheduledStart: at(300) };
+    const q = estimateQueue([programado, order('ya', OrderStatus.CONFIRMED, 5)], s, now);
+    const byId = Object.fromEntries(q.map((e) => [e.id, e]));
+    expect(byId.ya).toMatchObject({ queuePosition: 1, waitMinutes: 0 });
+    expect(iso(byId.prog.estimatedStartAt)).toBe(iso(at(240)));
+    expect(iso(byId.prog.estimatedReadyAt)).toBe(iso(at(300)));
+  });
+
   it('sin tiempos configurados la cola no suma espera', () => {
     const q = estimateQueue([order('a', OrderStatus.CONFIRMED, 5), order('b', OrderStatus.CONFIRMED, 1)], resolveTimingSettings(null), now);
     expect(q.every((e) => e.waitMinutes === 0)).toBe(true);

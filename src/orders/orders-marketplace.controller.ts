@@ -2,7 +2,7 @@ import { Controller, Post, Get, Body, Param, Req, UseGuards, ForbiddenException,
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { OrdersService } from './orders.service';
-import { CreateMarketplaceOrderDto } from './dto/create-marketplace-order.dto';
+import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/create-marketplace-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrderPaymentDto } from './dto/order-payment.dto';
@@ -13,6 +13,12 @@ export class OrdersMarketplaceController {
     private readonly ordersService: OrdersService,
     private readonly orderPaymentsService: OrderPaymentsService,
   ) {}
+
+  /** Franjas disponibles de un día para lo que hay en el carrito (público). */
+  @Post('marketplace/slots')
+  slots(@Body() query: MarketplaceSlotsQueryDto) {
+    return this.ordersService.getMarketplaceSlots(query);
+  }
 
   /** Seguimiento del pedido con el enlace que recibe el comprador (sirve sin cuenta). */
   @Get('marketplace/track/:token')
