@@ -131,10 +131,12 @@ export function computePlanTerms(
     }
   }
 
+  // Anticipos en pesos enteros (igual que los muestra el checkout); el saldo
+  // queda como total − anticipo. El contado es el total exacto.
   let depositRequired = 0;
   if (plan === 'CONTADO') depositRequired = total;
-  if (plan === 'MITAD_MITAD') depositRequired = round2((total * options.mitadMitad.depositPercent) / 100);
-  if (plan === 'PLAN_SEPARE') depositRequired = round2((total * options.planSepare.minInitialPercent) / 100);
+  if (plan === 'MITAD_MITAD') depositRequired = Math.min(total, Math.round((total * options.mitadMitad.depositPercent) / 100));
+  if (plan === 'PLAN_SEPARE') depositRequired = Math.min(total, Math.round((total * options.planSepare.minInitialPercent) / 100));
 
   const depositDeadline = depositRequired > 0
     ? new Date(now.getTime() + options.depositTimeoutHours * 3600 * 1000)
