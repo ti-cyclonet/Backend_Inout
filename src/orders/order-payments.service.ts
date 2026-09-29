@@ -11,6 +11,16 @@ import { OrdersService } from './orders.service';
 import { resolvePaymentOptions } from './payment-plans';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** "$22.806": pesos enteros, como los muestra el frontend. */
+const cop = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+
+/**
+ * Los montos se muestran redondeados al peso: si el pago supera el saldo por
+ * menos de $1 (p. ej. $22.806 sobre un saldo de $22.805,80) se toma el saldo.
+ */
+function fitToBalance(amount: number, balance: number): number {
+  return amount > balance && amount - balance < 1 ? balance : amount;
+}
 const VOUCHER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const VOUCHER_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -70,11 +80,11 @@ export class OrderPaymentsService {
     }
 
     const order = await this.findByToken(trackingToken);
-    this.validateInput(order, input);
+    const amount = this.validateInput(order, input);
     // No se aceptan más comprobantes pendientes que el saldo
     const pending = await this.paymentRepository.find({ where: { orderId: order.id, status: 'PENDIENTE_VERIFICACION' } });
     const pendingTotal = pending.reduce((s, p) => s + Number(p.amount), 0);
-    if (round2(Number(input.amount) + pendingTotal) > balanceDue(order)) {
+    if (round2(amount + pendingTotal) > balanceDue(order) + 0.99) {
       throw new BadRequestException('Ya hay comprobantes por verificar que cubren el saldo del pedido.');
     }
 
@@ -82,7 +92,7 @@ export class OrderPaymentsService {
     return this.paymentRepository.save(this.paymentRepository.create({
       tenantId: order.tenantId,
       orderId: order.id,
-      amount: round2(Number(input.amount)),
+      amount,
       method: input.method as any,
       reference: input.reference?.trim().slice(0, 100) || null,
       voucherUrl: uploaded.secure_url,
@@ -115,9 +125,11 @@ export class OrderPaymentsService {
         payment.rejectReason = rejectReason;
       } else {
         this.assertOrderAcceptsPayments(order);
-        if (round2(Number(payment.amount)) > balanceDue(order)) {
-          throw new BadRequestException('El pago supera el saldo pendiente del pedido.');
+        const fitted = fitToBalance(round2(Number(payment.amount)), balanceDue(order));
+        if (fitted > balanceDue(order)) {
+          throw new BadRequestException(`El pago supera el saldo pendiente (${cop(balanceDue(order))}).`);
         }
+        payment.amount = fitted;
         payment.status = 'VERIFICADO';
       }
       payment.verifiedBy = actorId;
@@ -216,11 +228,12 @@ export class OrderPaymentsService {
 
   private validateInput(order: Order, input: PaymentInput): number {
     this.assertOrderAcceptsPayments(order);
-    const amount = round2(Number(input?.amount));
-    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('El valor del pago debe ser mayor a cero.');
+    const raw = round2(Number(input?.amount));
+    if (!Number.isFinite(raw) || raw <= 0) throw new BadRequestException('El valor del pago debe ser mayor a cero.');
     if (!PAYMENT_METHODS.includes(input?.method as any)) throw new BadRequestException('Medio de pago no válido.');
+    const amount = fitToBalance(raw, balanceDue(order));
     if (amount > balanceDue(order)) {
-      throw new BadRequestException(`El pago supera el saldo pendiente ($${balanceDue(order).toLocaleString('es-CO')}).`);
+      throw new BadRequestException(`El pago supera el saldo pendiente (${cop(balanceDue(order))}).`);
     }
     return amount;
   }
