@@ -6,6 +6,8 @@ import { OrderPayment, PAYMENT_METHODS } from './entities/order-payment.entity';
 import { balanceDue, computePaymentStatus } from './payment-plans';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { toManufactureOf } from '../common/order-stock';
+import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
+import { resolvePaymentOptions } from './payment-plans';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const VOUCHER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -29,6 +31,7 @@ export class OrderPaymentsService {
     @InjectRepository(OrderPayment) private readonly paymentRepository: Repository<OrderPayment>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly marketplaceConfigService: MarketplaceConfigService,
   ) {}
 
   async listForOrder(tenantId: string, orderId: string) {
@@ -128,7 +131,10 @@ export class OrderPaymentsService {
   async track(trackingToken: string) {
     const order = await this.findByToken(trackingToken);
     const payments = await this.paymentRepository.find({ where: { orderId: order.id }, order: { createdAt: 'DESC' } });
+    const config = await this.marketplaceConfigService.getConfig(order.tenantId);
     return {
+      tenantId: order.tenantId,
+      storeSlug: config?.slug || null,
       orderCode: order.orderCode,
       status: order.status,
       createdAt: order.createdAt,
@@ -148,6 +154,10 @@ export class OrderPaymentsService {
       depositDeadline: order.depositDeadline,
       layawayDeadline: order.layawayDeadline,
       estimatedReadyAt: order.estimatedReadyAt,
+      scheduledStart: order.scheduledStart,
+      scheduledEnd: order.scheduledEnd,
+      /** Datos de pago de la tienda (cuentas, Nequi…) para consignar. */
+      paymentInstructions: resolvePaymentOptions(config?.paymentOptions).instructions,
       payments: payments.map((p) => ({
         amount: Number(p.amount),
         method: p.method,
