@@ -11,6 +11,7 @@ import { CreditModule } from '../credit/credit.module';
 import { OrderPayment } from './entities/order-payment.entity';
 import { OrderSettings } from './entities/order-settings.entity';
 import { OrderPaymentsService } from './order-payments.service';
+import { OrderAutomationService } from './order-automation.service';
 import { MarketplaceConfigModule } from '../marketplace-config/marketplace-config.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
@@ -23,7 +24,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
     CloudinaryModule,
   ],
   controllers: [OrdersMarketplaceController, OrdersController],
-  providers: [OrdersService, OrderPaymentsService],
+  providers: [OrdersService, OrderPaymentsService, OrderAutomationService],
   exports: [OrdersService, OrderPaymentsService],
 })
 export class OrdersModule {}
