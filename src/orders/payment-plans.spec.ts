@@ -22,11 +22,11 @@ const guest = { hasAccount: false, hasMadeToOrder: false, now };
 const client = { hasAccount: true, hasMadeToOrder: false, now };
 
 describe('resolvePaymentOptions', () => {
-  it('sin configuración conserva el comportamiento anterior (contado + crédito)', () => {
+  it('sin configuración conserva el comportamiento anterior (contra entrega + crédito)', () => {
     const o = resolvePaymentOptions(null);
-    expect(o.contado.enabled).toBe(true);
+    expect(o.contraEntrega.enabled).toBe(true);
     expect(o.credito.enabled).toBe(true);
-    expect(o.contraEntrega.enabled).toBe(false);
+    expect(o.contado.enabled).toBe(false);
     expect(o.mitadMitad.enabled).toBe(false);
     expect(o.planSepare.enabled).toBe(false);
   });
@@ -76,7 +76,7 @@ describe('computePlanTerms', () => {
   });
 
   it('rechaza planes desactivados en la tienda', () => {
-    const off = resolvePaymentOptions({ contado: { enabled: false } } as any);
+    const off = resolvePaymentOptions(null); // contado viene apagado por defecto
     expect(() => computePlanTerms('CONTADO', off, { ...guest, total: 1000 })).toThrow(/no ofrece/);
   });
 });

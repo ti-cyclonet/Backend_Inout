@@ -32,11 +32,12 @@ export interface PaymentOptions {
 
 /**
  * Configuración por defecto. Reproduce el comportamiento anterior a esta
- * funcionalidad: contado implícito y crédito para clientes con cupo.
+ * funcionalidad: pago contra entrega y crédito para clientes con cupo. El pago
+ * anticipado (contado) lo activa cada negocio.
  */
 export const DEFAULT_PAYMENT_OPTIONS: PaymentOptions = {
-  contado: { enabled: true },
-  contraEntrega: { enabled: false, maxOrderTotal: null },
+  contado: { enabled: false },
+  contraEntrega: { enabled: true, maxOrderTotal: null },
   mitadMitad: { enabled: false, depositPercent: 50 },
   planSepare: { enabled: false, minInitialPercent: 20, maxDays: 60, minOrderTotal: null },
   credito: { enabled: true },
