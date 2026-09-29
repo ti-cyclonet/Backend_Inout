@@ -171,6 +171,13 @@ export class OrdersService {
     });
     const now = new Date();
     const estimates = new Map(estimateQueue(active.map((o) => this.toQueueOrder(o)), settings, now).map((e) => [e.id, e]));
+    // Comprobantes de clientes por verificar, para marcarlos en las tarjetas
+    const pendingRows: { orderId: string; total: string }[] = await this.dataSource.query(
+      `SELECT "orderId", COUNT(*) AS total FROM manufacturing.order_payments
+        WHERE "tenantId" = $1 AND status = 'PENDIENTE_VERIFICACION' GROUP BY "orderId"`,
+      [tenantId],
+    );
+    const pendingVouchers = new Map(pendingRows.map((r) => [r.orderId, Number(r.total)]));
     return {
       settings,
       orders: active.map((o) => {
@@ -185,6 +192,7 @@ export class OrdersService {
           overdueMinutes: due ? Math.round((now.getTime() - due.getTime()) / 60000) : null,
           scheduledStart: o.scheduledStart,
           scheduledEnd: o.scheduledEnd,
+          pendingVouchers: pendingVouchers.get(o.id) || 0,
           queuePosition: est?.queuePosition ?? null,
           waitMinutes: est?.waitMinutes ?? null,
           estimatedStartAt: est?.estimatedStartAt ?? null,
