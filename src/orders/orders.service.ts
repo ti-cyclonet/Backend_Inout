@@ -318,6 +318,8 @@ export class OrdersService {
         : createDto.deliveryDate ? new Date(createDto.deliveryDate) : null,
       scheduledStart: slot?.start || null,
       scheduledEnd: slot?.end || null,
+      // Enlace de seguimiento para compartir con el cliente
+      trackingToken: randomBytes(24).toString('hex'),
       subtotal: createDto.subtotal || 0,
       tax: createDto.tax || 0,
       discount: createDto.discount || 0,
@@ -577,6 +579,21 @@ export class OrdersService {
     }
 
     return order;
+  }
+
+  /**
+   * Datos del enlace público de seguimiento de un pedido, para compartirlo con
+   * el cliente desde el panel. Pedidos anteriores o creados antes de que el
+   * panel generara el token lo reciben aquí la primera vez.
+   */
+  async getTrackingLink(id: string, tenantId: string) {
+    const order = await this.findOne(id, tenantId);
+    if (!order.trackingToken) {
+      order.trackingToken = randomBytes(24).toString('hex');
+      await this.orderRepository.update({ id: order.id, tenantId }, { trackingToken: order.trackingToken });
+    }
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return { orderCode: order.orderCode, token: order.trackingToken, store: config?.slug || tenantId };
   }
 
   async findByStatus(tenantId: string, status: OrderStatus) {
