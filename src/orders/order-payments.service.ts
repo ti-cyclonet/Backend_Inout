@@ -7,6 +7,7 @@ import { balanceDue, computePaymentStatus } from './payment-plans';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { toManufactureOf } from '../common/order-stock';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
+import { OrdersService } from './orders.service';
 import { resolvePaymentOptions } from './payment-plans';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -32,6 +33,7 @@ export class OrderPaymentsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly cloudinaryService: CloudinaryService,
     private readonly marketplaceConfigService: MarketplaceConfigService,
+    private readonly ordersService: OrdersService,
   ) {}
 
   async listForOrder(tenantId: string, orderId: string) {
@@ -132,8 +134,13 @@ export class OrderPaymentsService {
     const order = await this.findByToken(trackingToken);
     const payments = await this.paymentRepository.find({ where: { orderId: order.id }, order: { createdAt: 'DESC' } });
     const config = await this.marketplaceConfigService.getConfig(order.tenantId);
+    const delivery = await this.ordersService.estimateDelivery(order).catch(() => null);
     return {
       tenantId: order.tenantId,
+      /** Entrega estimada (en vivo): franja programada o cálculo por etapa/cola. */
+      estimatedDelivery: delivery,
+      /** Hora del servidor, para mostrar "actualizado hace…". */
+      serverTime: new Date(),
       storeSlug: config?.slug || null,
       orderCode: order.orderCode,
       status: order.status,

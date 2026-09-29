@@ -203,6 +203,7 @@ export class OrdersService {
         { tenantId, status: OrderStatus.CONFIRMED },
         { tenantId, status: OrderStatus.IN_PRODUCTION },
         { tenantId, status: OrderStatus.READY },
+        { tenantId, status: OrderStatus.OUT_FOR_DELIVERY },
         { tenantId, status: OrderStatus.DELIVERED },
       ],
     });
@@ -237,6 +238,41 @@ export class OrdersService {
         };
       }),
     };
+  }
+
+  /**
+   * Entrega estimada de un pedido para su seguimiento público. Programado: su
+   * franja. Si no, según la etapa: la cola de producción (espera + fabricación)
+   * y luego los tiempos de Listo y En reparto. Null si no hay con qué estimar.
+   */
+  async estimateDelivery(order: Order): Promise<{ at: Date; end: Date | null; scheduled: boolean } | null> {
+    if (order.scheduledStart && ![OrderStatus.DELIVERED, OrderStatus.INVOICED, OrderStatus.CANCELLED].includes(order.status)) {
+      return { at: new Date(order.scheduledStart), end: order.scheduledEnd ? new Date(order.scheduledEnd) : null, scheduled: true };
+    }
+    const settings = await this.getTimingSettings(order.tenantId);
+    const minutes = (s: OrderStatus) => settings.stageDurations[s as keyof typeof settings.stageDurations] || 0;
+    const now = new Date();
+    const later = (d: Date | null) => (d && d.getTime() > now.getTime() ? d : now);
+    const plus = (d: Date, m: number) => new Date(d.getTime() + m * 60000);
+
+    let at: Date | null = null;
+    if (order.status === OrderStatus.CONFIRMED || order.status === OrderStatus.IN_PRODUCTION) {
+      const queued = await this.orderRepository.find({
+        where: [
+          { tenantId: order.tenantId, status: OrderStatus.CONFIRMED },
+          { tenantId: order.tenantId, status: OrderStatus.IN_PRODUCTION },
+        ],
+      });
+      const est = estimateQueue(queued.map((o) => this.toQueueOrder(o)), settings, now).find((e) => e.id === order.id);
+      if (est) at = plus(est.estimatedReadyAt, minutes(OrderStatus.READY) + minutes(OrderStatus.OUT_FOR_DELIVERY));
+    } else if (order.status === OrderStatus.READY) {
+      at = plus(later(order.stageDueAt ? new Date(order.stageDueAt) : null), minutes(OrderStatus.OUT_FOR_DELIVERY));
+    } else if (order.status === OrderStatus.OUT_FOR_DELIVERY) {
+      at = order.stageDueAt ? later(new Date(order.stageDueAt)) : null;
+    }
+    // Sin tiempos configurados el cálculo daría "ahora": mejor no mostrar nada
+    if (!at || at.getTime() <= now.getTime()) return null;
+    return { at, end: null, scheduled: false };
   }
 
   /** Hora estimada de listo para un pedido que entra al final de la cola ahora. */
@@ -626,7 +662,9 @@ export class OrdersService {
       [OrderStatus.DRAFT]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
       [OrderStatus.CONFIRMED]: [OrderStatus.IN_PRODUCTION, OrderStatus.CANCELLED],
       [OrderStatus.IN_PRODUCTION]: [OrderStatus.READY, OrderStatus.CANCELLED],
-      [OrderStatus.READY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+      // Listo → en reparto (domicilio) o entregado directo (recoge en tienda)
+      [OrderStatus.READY]: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+      [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
       [OrderStatus.DELIVERED]: [OrderStatus.INVOICED, OrderStatus.CANCELLED],
       [OrderStatus.INVOICED]: [],
       [OrderStatus.CANCELLED]: [],
@@ -671,7 +709,8 @@ export class OrdersService {
     }
 
     // Plan separe: solo se entrega pagado al 100 %
-    if (newStatus === OrderStatus.DELIVERED && order.paymentPlan === 'PLAN_SEPARE' && balanceDue(order) > 0) {
+    if ((newStatus === OrderStatus.DELIVERED || newStatus === OrderStatus.OUT_FOR_DELIVERY)
+      && order.paymentPlan === 'PLAN_SEPARE' && balanceDue(order) > 0) {
       throw new BadRequestException(
         `El plan separe se entrega pagado al 100 %. Saldo pendiente: $${balanceDue(order).toLocaleString('es-CO')}.`,
       );
@@ -828,6 +867,7 @@ export class OrdersService {
       [OrderStatus.CONFIRMED]: 0,
       [OrderStatus.IN_PRODUCTION]: 0,
       [OrderStatus.READY]: 0,
+      [OrderStatus.OUT_FOR_DELIVERY]: 0,
       [OrderStatus.DELIVERED]: 0,
       [OrderStatus.INVOICED]: 0,
       [OrderStatus.CANCELLED]: 0,

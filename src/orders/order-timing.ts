@@ -17,6 +17,7 @@ export const TIMED_STAGES = [
   OrderStatus.CONFIRMED,
   OrderStatus.IN_PRODUCTION,
   OrderStatus.READY,
+  OrderStatus.OUT_FOR_DELIVERY,
   OrderStatus.DELIVERED,
 ] as const;
 

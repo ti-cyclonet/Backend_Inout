@@ -275,7 +275,7 @@ export class SalesService {
     const pendingOrders = await this.orderRepository.count({
       where: {
         tenantId,
-        status: In([OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY]),
+        status: In([OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY, OrderStatus.OUT_FOR_DELIVERY]),
       },
     });
 

@@ -5,6 +5,8 @@ export enum OrderStatus {
   CONFIRMED = 'CONFIRMED',
   IN_PRODUCTION = 'IN_PRODUCTION',
   READY = 'READY',
+  /** En camino al cliente (opcional: un pedido que se recoge pasa de READY a DELIVERED). */
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
   DELIVERED = 'DELIVERED',
   INVOICED = 'INVOICED',
   CANCELLED = 'CANCELLED',
