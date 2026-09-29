@@ -47,8 +47,10 @@ describe('computePlanTerms', () => {
     expect(t.layawayDeadline).toBeNull();
   });
 
-  it('50/50 exige el porcentaje configurado', () => {
-    expect(computePlanTerms('MITAD_MITAD', allOn, { ...guest, total: 99999 }).depositRequired).toBe(49999.5);
+  it('50/50 exige el porcentaje configurado, en pesos enteros', () => {
+    expect(computePlanTerms('MITAD_MITAD', allOn, { ...guest, total: 99999 }).depositRequired).toBe(50000);
+    // Caso real: total con centavos
+    expect(computePlanTerms('MITAD_MITAD', allOn, { ...guest, total: 41413.35 }).depositRequired).toBe(20707);
   });
 
   it('contra entrega no exige anticipo', () => {
