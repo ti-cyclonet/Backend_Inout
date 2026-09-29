@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Request } from 'express';
 import { OrdersService } from './orders.service';
-import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
+import { CreateOrderDto, OrderSlotsQueryDto, UpdateOrderStatusDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
@@ -40,6 +40,12 @@ export class OrdersController {
   @Get('stats')
   getStats(@GetTenantId() tenantId: string) {
     return this.ordersService.getStats(tenantId);
+  }
+
+  /** Franjas de un día para un pedido del panel (misma lógica que el MarketPlace). */
+  @Post('slots')
+  getSlots(@Body() query: OrderSlotsQueryDto, @GetTenantId() tenantId: string) {
+    return this.ordersService.getPanelSlots(tenantId, query);
   }
 
   /** Pedidos programados entre dos fechas (?from=YYYY-MM-DD&to=YYYY-MM-DD). */

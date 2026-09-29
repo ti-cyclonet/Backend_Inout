@@ -4,7 +4,7 @@ import { Repository, DataSource, Between, In, Not } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderDto, OrderSlotsQueryDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/create-marketplace-order.dto';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
@@ -101,7 +101,7 @@ export class OrdersService {
   // ─── Pedidos programados ───
 
   /** Pedidos ya programados en un día, por inicio de franja (para el cupo). */
-  private async takenSlots(tenantId: string, date: string): Promise<Map<number, number>> {
+  private async takenSlots(tenantId: string, date: string, excludeOrderId?: string): Promise<Map<number, number>> {
     const rows = await this.orderRepository.find({
       where: {
         tenantId,
@@ -112,6 +112,7 @@ export class OrdersService {
     });
     const taken = new Map<number, number>();
     for (const r of rows) {
+      if (r.id === excludeOrderId) continue;
       const k = new Date(r.scheduledStart!).getTime();
       taken.set(k, (taken.get(k) || 0) + 1);
     }
@@ -123,19 +124,55 @@ export class OrdersService {
    * producción y el tiempo de fabricación de lo que falte en stock.
    */
   async getMarketplaceSlots(query: MarketplaceSlotsQueryDto) {
-    const config = await this.marketplaceConfigService.getConfig(query.tenantId);
-    const scheduling = resolveScheduling(config?.scheduling);
-    if (!scheduling.enabled) return { enabled: false, date: query.date, earliestReadyAt: null, slots: [] };
+    return this.getSlots(query.tenantId, query.date, query.items || []);
+  }
 
-    const preview = await previewOrderStock(this.dataSource.manager, query.tenantId, query.items || []);
-    const timing = await this.getTimingSettings(query.tenantId);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(query.tenantId, preview.maxLeadHours, timing);
-    const slots = buildSlots(query.date, scheduling, {
+  /** Franjas para un pedido del panel (la tienda sale del token). */
+  async getPanelSlots(tenantId: string, query: OrderSlotsQueryDto) {
+    return this.getSlots(tenantId, query.date, query.items || []);
+  }
+
+  private async getSlots(tenantId: string, date: string, items: any[]) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    const scheduling = resolveScheduling(config?.scheduling);
+    if (!scheduling.enabled) return { enabled: false, date, earliestReadyAt: null, slotMinutes: scheduling.slotMinutes, slots: [] };
+
+    const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
+    const timing = await this.getTimingSettings(tenantId);
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing);
+    const slots = buildSlots(date, scheduling, {
       now: new Date(),
       earliestReadyAt,
-      takenBySlotStart: await this.takenSlots(query.tenantId, query.date),
+      takenBySlotStart: await this.takenSlots(tenantId, date),
     });
-    return { enabled: true, date: query.date, earliestReadyAt, slots };
+    return { enabled: true, date, earliestReadyAt, slotMinutes: scheduling.slotMinutes, slots };
+  }
+
+  /**
+   * Franja de un pedido del panel. Con la programación de la tienda activa se
+   * valida igual que en el MarketPlace, salvo `override`: el negocio puede
+   * acordar con el cliente una franja llena o fuera de los tiempos. Sin
+   * programación activa se acepta la hora dada con una franja de 60 min.
+   */
+  private async resolvePanelSchedule(
+    tenantId: string,
+    scheduledStart: string,
+    items: any[],
+    override: boolean,
+    excludeOrderId?: string,
+  ): Promise<{ start: Date; end: Date }> {
+    const at = new Date(scheduledStart);
+    if (isNaN(at.getTime())) throw new BadRequestException('Fecha y hora de entrega no válidas.');
+    const scheduling = resolveScheduling((await this.marketplaceConfigService.getConfig(tenantId))?.scheduling);
+    const minutes = scheduling.enabled ? scheduling.slotMinutes : 60;
+    if (!scheduling.enabled || override) {
+      return { start: at, end: new Date(at.getTime() + minutes * 60000) };
+    }
+
+    const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, await this.getTimingSettings(tenantId));
+    const taken = await this.takenSlots(tenantId, bogotaDate(at), excludeOrderId);
+    return assertSlotAvailable(at, scheduling, { now: new Date(), earliestReadyAt, takenBySlotStart: taken });
   }
 
   /** Agenda del panel: pedidos programados entre dos fechas (YYYY-MM-DD, hora de Colombia). */
@@ -263,6 +300,9 @@ export class OrdersService {
   }
 
   async create(createDto: CreateOrderDto, tenantId: string) {
+    const slot = createDto.scheduledStart
+      ? await this.resolvePanelSchedule(tenantId, createDto.scheduledStart, createDto.items || [], !!createDto.allowSlotOverride)
+      : null;
     const orderCode = await this.generateOrderCode(tenantId);
 
     const order = this.orderRepository.create({
@@ -273,7 +313,11 @@ export class OrdersService {
       customerName: createDto.customerName || null,
       items: createDto.items || null,
       notes: createDto.notes || null,
-      deliveryDate: createDto.deliveryDate ? new Date(createDto.deliveryDate) : null,
+      // Programado: el día de entrega sale de la franja (lo usan cotización y remisión)
+      deliveryDate: slot ? new Date(`${bogotaDate(slot.start)}T12:00:00-05:00`)
+        : createDto.deliveryDate ? new Date(createDto.deliveryDate) : null,
+      scheduledStart: slot?.start || null,
+      scheduledEnd: slot?.end || null,
       subtotal: createDto.subtotal || 0,
       tax: createDto.tax || 0,
       discount: createDto.discount || 0,
@@ -722,10 +766,22 @@ export class OrdersService {
       );
     }
 
+    const { scheduledStart, allowSlotOverride, ...rest } = updateDto;
     Object.assign(order, {
-      ...updateDto,
-      deliveryDate: updateDto.deliveryDate ? new Date(updateDto.deliveryDate) : order.deliveryDate,
+      ...rest,
+      deliveryDate: rest.deliveryDate ? new Date(rest.deliveryDate) : order.deliveryDate,
     });
+
+    // Franja: null/'' la quita; una hora nueva se valida como al crear
+    if (scheduledStart === null || scheduledStart === '') {
+      order.scheduledStart = null;
+      order.scheduledEnd = null;
+    } else if (scheduledStart && new Date(scheduledStart).getTime() !== new Date(order.scheduledStart || 0).getTime()) {
+      const slot = await this.resolvePanelSchedule(tenantId, scheduledStart, order.items || [], !!allowSlotOverride, order.id);
+      order.scheduledStart = slot.start;
+      order.scheduledEnd = slot.end;
+      order.deliveryDate = new Date(`${bogotaDate(slot.start)}T12:00:00-05:00`);
+    }
 
     const updatedOrder = await this.orderRepository.save(order);
     return { message: 'Pedido actualizado exitosamente', order: updatedOrder };
