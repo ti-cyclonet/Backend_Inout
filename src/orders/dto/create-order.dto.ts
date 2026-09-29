@@ -1,6 +1,16 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsDateString, IsEnum, MaxLength, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsDateString, IsEnum, MaxLength, IsIn, IsBoolean } from 'class-validator';
 import { PAYMENT_METHODS } from '../../credit/entities/receivable-payment.entity';
 import { OrderStatus } from '../entities/order.entity';
+
+/** Franjas de un día para los ítems de un pedido del panel. */
+export class OrderSlotsQueryDto {
+  @IsString()
+  date: string;
+
+  @IsOptional()
+  @IsArray()
+  items?: { productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; itemType?: string }[];
+}
 
 export class CreateOrderDto {
   @IsOptional()
@@ -22,6 +32,16 @@ export class CreateOrderDto {
   @IsOptional()
   @IsDateString()
   deliveryDate?: string;
+
+  /** Entrega programada: inicio de la franja (ISO). En edición, null la quita. */
+  @IsOptional()
+  @IsString()
+  scheduledStart?: string | null;
+
+  /** Desde el panel: aceptar la franja aunque esté llena o no cumpla los tiempos. */
+  @IsOptional()
+  @IsBoolean()
+  allowSlotOverride?: boolean;
 
   @IsOptional()
   @IsNumber()
