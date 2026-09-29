@@ -21,7 +21,9 @@ export class ProductsController {
    * marcados como visibles en ese catálogo (ver findMarketplaceCatalog). */
   @Get('tenant/:tenantId')
   findByTenant(@Param('tenantId') tenantId: string, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.productsService.findMarketplaceCatalog(tenantId, +page || 1, +limit || 10);
+    // Sin limit el MarketPlace recibe TODO el catálogo visible (antes el
+    // default de 10 dejaba por fuera al resto de productos de la tienda).
+    return this.productsService.findMarketplaceCatalog(tenantId, +page || 1, +limit || 1000);
   }
 
   /** Público (MarketPlace): materiales de reventa visibles en el catálogo. */
