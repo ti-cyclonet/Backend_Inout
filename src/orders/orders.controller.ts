@@ -78,6 +78,12 @@ export class OrdersController {
     return this.ordersService.findToManufacture(tenantId);
   }
 
+  /** Enlace público de seguimiento del pedido (para compartirlo con el cliente). */
+  @Get(':id/tracking-link')
+  getTrackingLink(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    return this.ordersService.getTrackingLink(id, tenantId);
+  }
+
   @Get(':id/payments')
   listPayments(@Param('id') id: string, @GetTenantId() tenantId: string) {
     return this.orderPaymentsService.listForOrder(tenantId, id);
