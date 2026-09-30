@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -99,6 +100,7 @@ import { OrderSettings } from './orders/entities/order-settings.entity';
     OrdersModule,
     WarehousesModule,
     CreditModule,
+    DashboardModule,
   ],
 })
 export class AppModule implements NestModule {
