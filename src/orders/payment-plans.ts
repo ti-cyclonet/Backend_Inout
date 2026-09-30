@@ -152,25 +152,34 @@ export function computePlanTerms(
 }
 
 /** Estado de pago a partir de lo verificado. */
+/**
+ * Los valores se muestran y se cobran al peso, pero los totales pueden traer
+ * centavos (precios con IVA, porcentajes del plan). Un residuo menor a $1 se
+ * da por saldado: si no, quedaba un "saldo" de $0,16 imposible de registrar
+ * que bloqueaba la facturación.
+ */
+export const SETTLE_TOLERANCE = 1;
+
 export function computePaymentStatus(order: { total: number; depositRequired: number; amountPaid: number }): PaymentStatus {
   const total = round2(Number(order.total) || 0);
   const paid = round2(Number(order.amountPaid) || 0);
   const deposit = round2(Number(order.depositRequired) || 0);
-  if (total > 0 && paid >= total) return 'PAGADO';
+  if (total > 0 && total - paid < SETTLE_TOLERANCE) return 'PAGADO';
   if (deposit > 0) {
     if (paid <= 0) return 'ANTICIPO_PENDIENTE';
-    return paid >= deposit ? 'ANTICIPO_CUBIERTO' : 'PARCIAL';
+    return deposit - paid < SETTLE_TOLERANCE ? 'ANTICIPO_CUBIERTO' : 'PARCIAL';
   }
   return paid > 0 ? 'PARCIAL' : 'SIN_PAGO';
 }
 
 /** ¿El anticipo exigido ya está cubierto? (siempre true si el plan no exige anticipo) */
 export function isDepositCovered(order: { depositRequired: number; amountPaid: number }): boolean {
-  return round2(Number(order.amountPaid) || 0) >= round2(Number(order.depositRequired) || 0);
+  return round2(Number(order.depositRequired) || 0) - round2(Number(order.amountPaid) || 0) < SETTLE_TOLERANCE;
 }
 
 export function balanceDue(order: { total: number; amountPaid: number }): number {
-  return Math.max(0, round2((Number(order.total) || 0) - (Number(order.amountPaid) || 0)));
+  const due = round2((Number(order.total) || 0) - (Number(order.amountPaid) || 0));
+  return due < SETTLE_TOLERANCE ? 0 : due;
 }
 
 /** Fecha calendario en Colombia (YYYY-MM-DD). */
