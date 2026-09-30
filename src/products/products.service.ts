@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductComposition } from './entities/product-composition.entity';
 import { CompositionTwo } from './entities/composition-two.entity';
@@ -175,6 +175,35 @@ export class ProductsService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Vitrina general del MarketPlace: productos visibles de todas las tiendas,
+   * con su tenant para que el front los agrupe/filtre por sector. Imágenes en
+   * una sola consulta (antes era una por producto).
+   */
+  async findMarketplaceHome(maxItems = 500) {
+    const products = await this.productRepository.find({
+      where: { blnMarketplaceVisible: true },
+      order: { strName: 'ASC' },
+      take: maxItems,
+    });
+    const ids = products.map((p) => p.strId);
+    const images = ids.length
+      ? await this.imageRepository.find({
+          where: { strEntityId: In(ids), strEntityType: 'product', strStatus: 'active' },
+        })
+      : [];
+    const byProduct = new Map<string, { strId: string; strImageUrl: string }[]>();
+    for (const img of images) {
+      const list = byProduct.get(img.strEntityId) || [];
+      list.push({ strId: img.strId, strImageUrl: img.strImageUrl });
+      byProduct.set(img.strEntityId, list);
+    }
+    return {
+      data: products.map((p) => ({ ...p, images: byProduct.get(p.strId) || [] })),
+      total: products.length,
     };
   }
 

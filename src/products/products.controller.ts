@@ -12,9 +12,12 @@ import { UsageWarningInterceptor } from 'src/usage-counters/interceptors/usage-w
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
+  /** Público: vitrina general (/marketplace/home) con lo que cada tienda
+   * marcó como visible en su MarketPlace. Antes devolvía los primeros 50
+   * productos de toda la base (de cualquier tienda, visibles o no). */
   @Get('all')
-  findAllProducts(@Query('page') page: string, @Query('limit') limit: string) {
-    return this.productsService.findAllProducts(+page || 1, +limit || 50);
+  findAllProducts() {
+    return this.productsService.findMarketplaceHome();
   }
 
   /** Ruta pública consumida por el MarketPlace del tenant: solo productos
