@@ -248,6 +248,8 @@ export class ProductsService {
   async findMarketplaceCatalog(tenantId: string, page: number = 1, limit: number = 10) {
     const [products, total] = await this.productRepository.findAndCount({
       where: { strTenantId: tenantId, blnMarketplaceVisible: true },
+      // La categoría (nombre) agrupa las secciones del menú de restaurante
+      relations: { category: true },
       order: { strName: 'ASC' },
       take: limit,
       skip: (page - 1) * limit,

@@ -10,6 +10,7 @@ export class UpdateMarketplaceConfigDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['grid', 'menu'])
+  // menu = Póster, menu-chalk = Pizarra, menu-clean = Elegante
+  @IsIn(['grid', 'menu', 'menu-chalk', 'menu-clean'])
   displayMode?: string;
 }

@@ -101,6 +101,14 @@ describe('estado de pago', () => {
     expect(balanceDue({ total: 100, amountPaid: 130 })).toBe(0);
     expect(balanceDue({ total: 100, amountPaid: 30.1 })).toBe(69.9);
     expect(isDepositCovered({ depositRequired: 0, amountPaid: 0 })).toBe(true);
-    expect(isDepositCovered({ depositRequired: 50, amountPaid: 49.99 })).toBe(false);
+    expect(isDepositCovered({ depositRequired: 50, amountPaid: 48.99 })).toBe(false);
+  });
+
+  it('un residuo de centavos (< $1) se da por saldado', () => {
+    // Caso real: total con centavos y pago registrado al peso → quedaban $0,16
+    expect(balanceDue({ total: 16566.16, amountPaid: 16566 })).toBe(0);
+    expect(computePaymentStatus({ total: 16566.16, depositRequired: 0, amountPaid: 16566 })).toBe('PAGADO');
+    expect(isDepositCovered({ depositRequired: 50, amountPaid: 49.99 })).toBe(true);
+    expect(balanceDue({ total: 100, amountPaid: 98.5 })).toBe(1.5);
   });
 });
