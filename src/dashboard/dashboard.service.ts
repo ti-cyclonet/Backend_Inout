@@ -5,35 +5,22 @@ import { Sale } from '../sales/entities/sale.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderPayment } from '../orders/entities/order-payment.entity';
 import { Receivable, ReceivableStatus } from '../credit/entities/receivable.entity';
-import { Customer } from '../customers/entities/customer.entity';
+import { CustomersService } from '../customers/customers.service';
 import { Product } from '../products/entities/product.entity';
 import { Material } from '../materials/entities/material.entity';
 import { PurchaseRecord } from '../purchases/entities/purchase-record.entity';
 
-/** Colombia no tiene horario de verano: UTC-5 fijo. */
-const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function bogotaMonthStart(now: Date, delta = 0): Date {
-  const l = new Date(now.getTime() - BOGOTA_OFFSET_MS);
-  return new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + delta, 1) + BOGOTA_OFFSET_MS);
-}
-function bogotaDayStart(now: Date, delta = 0): Date {
-  const l = new Date(now.getTime() - BOGOTA_OFFSET_MS);
-  return new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate() + delta) + BOGOTA_OFFSET_MS);
-}
-const dayKey = (d: Date | string) => new Date(new Date(d).getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
-const num = (v: any) => Number(v) || 0;
+import { BOGOTA_OFFSET_MS, DAY_MS, bogotaDayStart, bogotaMonthStart, dayKey, num } from './panel-utils';
 
 /** Pedidos en curso (ni borrador ni cerrados). */
-const ACTIVE_ORDER = [OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY, OrderStatus.OUT_FOR_DELIVERY];
+export const ACTIVE_ORDER = [OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY, OrderStatus.OUT_FOR_DELIVERY];
 /** Pedidos que ya cuentan como venta (como en sales/stats). */
-const SOLD_ORDER = [OrderStatus.DELIVERED, OrderStatus.INVOICED];
+export const SOLD_ORDER = [OrderStatus.DELIVERED, OrderStatus.INVOICED];
 
 /** Total de una venta directa (las antiguas no guardan `total`). */
-const saleTotal = (s: Sale) => (s.total != null ? num(s.total) : num(s.fltQuantity) * num(s.fltUnitPrice));
+export const saleTotal = (s: Sale) => (s.total != null ? num(s.total) : num(s.fltQuantity) * num(s.fltUnitPrice));
 /** Cuándo un pedido pasó a ser venta: al facturarse, o su última actualización al entregarse. */
-const orderSoldAt = (o: Order) => o.invoicedAt || o.updatedAt || o.createdAt;
+export const orderSoldAt = (o: Order) => o.invoicedAt || o.updatedAt || o.createdAt;
 
 /**
  * Resumen del Dashboard de InOut para el tenant de la sesión: ventas (directas
@@ -48,13 +35,13 @@ export class DashboardService {
     @InjectRepository(Order) private orders: Repository<Order>,
     @InjectRepository(OrderPayment) private payments: Repository<OrderPayment>,
     @InjectRepository(Receivable) private receivables: Repository<Receivable>,
-    @InjectRepository(Customer) private customers: Repository<Customer>,
+    private readonly customersService: CustomersService,
     @InjectRepository(Product) private products: Repository<Product>,
     @InjectRepository(Material) private materials: Repository<Material>,
     @InjectRepository(PurchaseRecord) private purchases: Repository<PurchaseRecord>,
   ) {}
 
-  async getOverview(tenantId: string) {
+  async getOverview(tenantId: string, authorization?: string) {
     const now = new Date();
     const monthStart = bogotaMonthStart(now);
     const prevMonthStart = bogotaMonthStart(now, -1);
@@ -64,7 +51,7 @@ export class DashboardService {
     const in15Days = new Date(now.getTime() + 15 * DAY_MS);
     const todayKey = dayKey(now);
 
-    const [sales, soldOrders, activeOrders, pendingPayments, openReceivables, customersAgg, newCustomers, products, materials, expiring] = await Promise.all([
+    const [sales, soldOrders, activeOrders, pendingPayments, openReceivables, clientList, _unused, products, materials, expiring] = await Promise.all([
       this.sales.createQueryBuilder('s')
         .where('s.strTenantId = :t', { t: tenantId })
         .andWhere('s.dtmCreationDate >= :from', { from: sixMonthsStart })
@@ -77,11 +64,9 @@ export class DashboardService {
       this.orders.find({ where: { tenantId, status: In(ACTIVE_ORDER) }, order: { createdAt: 'ASC' } }),
       this.payments.count({ where: { tenantId, status: 'PENDIENTE_VERIFICACION' } }),
       this.receivables.find({ where: { tenantId, status: In([ReceivableStatus.PENDIENTE, ReceivableStatus.PARCIAL]) } }),
-      this.customers.createQueryBuilder('c')
-        .select('COUNT(c.id)', 'total')
-        .where('c.tenantId = :t', { t: tenantId }).getRawOne(),
-      this.customers.createQueryBuilder('c')
-        .where('c.tenantId = :t AND c.createdAt >= :from', { t: tenantId, from: monthStart }).getCount(),
+      // Clientes = usuarios de Authoriza con rol clienteInout (módulo Clientes)
+      this.customersService.findByTenantId(tenantId, authorization).catch(() => []) as Promise<any[]>,
+      Promise.resolve(0),
       this.products.find({ where: { strTenantId: tenantId } as any }),
       this.materials.find({ where: { strTenantId: tenantId } as any }),
       this.purchases.createQueryBuilder('p')
@@ -203,7 +188,10 @@ export class DashboardService {
           ? Math.round(((products.length + materials.length - lowStock.length) / (products.length + materials.length)) * 100)
           : null,
       },
-      customers: { total: num(customersAgg?.total), newThisMonth: newCustomers },
+      customers: {
+        total: clientList.length,
+        newThisMonth: clientList.filter((c) => c.createdAt && new Date(c.createdAt) >= monthStart).length,
+      },
       alerts: {
         lowStock: lowStock.slice(0, 6),
         delayedOrders: delayed.slice(0, 5).map((o) => ({ id: o.id, code: o.orderCode, customer: (o.customerName || '').split(' | ')[0], status: o.status, minutesLate: Math.round((now.getTime() - new Date(o.stageDueAt!).getTime()) / 60000) })),
