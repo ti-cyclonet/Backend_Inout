@@ -62,6 +62,10 @@ export class Combo {
   @Column({ type: 'varchar', length: 500, nullable: true })
   strImageUrl: string | null;
 
+  /** public_id en Cloudinary, para borrar la imagen al reemplazarla o al borrar el combo. */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  strImagePublicId: string | null;
+
   @OneToMany(() => ComboComponent, (c) => c.combo, { cascade: true })
   components: ComboComponent[];
 

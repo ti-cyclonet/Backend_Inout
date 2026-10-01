@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
-import { CombosService } from './combos.service';
+import { COMBO_IMAGE_MAX_BYTES, CombosService } from './combos.service';
 import { AssembleKitDto, CreateComboDto, UpdateComboDto } from './dto/combo.dto';
 
 const actorOf = (req: Request) => (req.user as any)?.email || (req.user as any)?.id || null;
@@ -72,6 +73,23 @@ export class CombosController {
   @Roles('admin')
   remove(@GetTenantId() tenantId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.combosService.remove(tenantId, id);
+  }
+
+  /** Imagen del combo (campo 'image'). */
+  @Post(':id/image')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  // Margen sobre el máximo para que el servicio devuelva el mensaje claro
+  @UseInterceptors(FileInterceptor('image', { limits: { fileSize: COMBO_IMAGE_MAX_BYTES + 1024 * 1024 } }))
+  setImage(@GetTenantId() tenantId: string, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
+    return this.combosService.setImage(tenantId, id, file);
+  }
+
+  @Delete(':id/image')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  removeImage(@GetTenantId() tenantId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.combosService.removeImage(tenantId, id);
   }
 
   @Post(':id/assemble')

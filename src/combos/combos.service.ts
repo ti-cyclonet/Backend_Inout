@@ -8,6 +8,12 @@ import { AssembleKitDto, ComboComponentDto, CreateComboDto, UpdateComboDto } fro
 import { assertComponentsDefinition, assertSellableComponents, COMPONENT_TABLES, LoadedComponent, loadComponents } from './combo-components';
 import { componentsCost, listPriceTotal, stockQuantityPerCombo, virtualAvailability, weightedCost } from './combo-math';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { logoVariant } from '../tenant-branding/logo-url';
+
+/** Imagen del combo: PNG, JPG o WebP de hasta 5 MB (la app la reduce antes de subirla). */
+export const COMBO_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+export const COMBO_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 const num = (v: any) => Number(v) || 0;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -19,6 +25,7 @@ export class CombosService {
     @InjectRepository(Combo) private readonly comboRepo: Repository<Combo>,
     @InjectRepository(ComboAssembly) private readonly assemblyRepo: Repository<ComboAssembly>,
     private readonly dataSource: DataSource,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   // ── Lectura ────────────────────────────────────────────────────────────
@@ -55,7 +62,7 @@ export class CombosService {
           itemType: d.strType === 'KIT' ? 'kit' : 'combo',
           strName: d.strName,
           strDescription: d.strDescription,
-          strImageUrl: d.strImageUrl,
+          strImageUrl: logoVariant(d.strImageUrl, 'web'),
           fltPrice: d.fltPrice,
           listPrice: d.listPrice,
           savings: d.savings,
@@ -169,6 +176,7 @@ export class CombosService {
       strStatus: combo.strStatus,
       blnMarketplaceVisible: combo.blnMarketplaceVisible,
       strImageUrl: combo.strImageUrl,
+      strImageWebUrl: logoVariant(combo.strImageUrl, 'web'),
       fltPrice: price,
       listPrice,
       savings: round2(Math.max(0, listPrice - price)),
@@ -221,7 +229,6 @@ export class CombosService {
         strType: dto.type,
         fltPrice: round2(dto.price),
         blnMarketplaceVisible: dto.marketplaceVisible !== false,
-        strImageUrl: dto.imageUrl?.trim() || null,
         strStatus: 'active',
         ingQuantity: 0,
         ingReservedStock: 0,
@@ -245,7 +252,6 @@ export class CombosService {
       if (dto.description !== undefined) combo.strDescription = dto.description.trim() || null;
       if (dto.price !== undefined) combo.fltPrice = round2(dto.price);
       if (dto.marketplaceVisible !== undefined) combo.blnMarketplaceVisible = dto.marketplaceVisible;
-      if (dto.imageUrl !== undefined) combo.strImageUrl = dto.imageUrl.trim() || null;
       if (dto.status !== undefined) combo.strStatus = dto.status;
 
       if (dto.components) {
@@ -285,8 +291,37 @@ export class CombosService {
         return { deleted: false, deactivated: true, message: 'El kit tiene historial de armado: quedó inactivo en vez de eliminarse.' };
       }
       await manager.delete(Combo, { strId: id, strTenantId: tenantId });
+      if (combo.strImagePublicId) {
+        await this.cloudinary.destroy(combo.strImagePublicId).catch(() => undefined);
+      }
       return { deleted: true, deactivated: false, message: 'Combo eliminado' };
     });
+  }
+
+  // ── Imagen ─────────────────────────────────────────────────────────────
+
+  /** Sube o reemplaza la imagen del combo (Cloudinary); borra la anterior. */
+  async setImage(tenantId: string, id: string, file: Express.Multer.File | undefined) {
+    if (!file?.buffer?.length) throw new BadRequestException('Selecciona una imagen.');
+    if (!COMBO_IMAGE_TYPES.includes(file.mimetype)) throw new BadRequestException('La imagen debe ser PNG, JPG o WebP.');
+    if (file.size > COMBO_IMAGE_MAX_BYTES) throw new BadRequestException('La imagen no puede pesar más de 5 MB.');
+
+    const combo = await this.getCombo(tenantId, id);
+    const uploaded = await this.cloudinary.uploadImageFromBuffer(file.buffer, `inout/tenants/${tenantId}/combos`);
+    const previous = combo.strImagePublicId;
+    await this.comboRepo.update({ strId: id, strTenantId: tenantId }, {
+      strImageUrl: uploaded.secure_url,
+      strImagePublicId: uploaded.public_id,
+    });
+    if (previous && previous !== uploaded.public_id) await this.cloudinary.destroy(previous).catch(() => undefined);
+    return this.findOne(tenantId, id);
+  }
+
+  async removeImage(tenantId: string, id: string) {
+    const combo = await this.getCombo(tenantId, id);
+    await this.comboRepo.update({ strId: id, strTenantId: tenantId }, { strImageUrl: null, strImagePublicId: null });
+    if (combo.strImagePublicId) await this.cloudinary.destroy(combo.strImagePublicId).catch(() => undefined);
+    return this.findOne(tenantId, id);
   }
 
   // ── Kits: armar / desarmar ─────────────────────────────────────────────

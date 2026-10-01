@@ -41,11 +41,6 @@ export class CreateComboDto {
   @IsBoolean()
   marketplaceVisible?: boolean;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  imageUrl?: string;
-
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -58,7 +53,6 @@ export class UpdateComboDto {
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
   @IsOptional() @IsNumber() @Min(0) price?: number;
   @IsOptional() @IsBoolean() marketplaceVisible?: boolean;
-  @IsOptional() @IsString() @MaxLength(500) imageUrl?: string;
   @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
 
   /** Reemplaza todos los componentes (en un kit, solo si no hay unidades armadas). */
