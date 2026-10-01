@@ -24,6 +24,14 @@ export class CombosController {
     return this.combosService.findCatalog(tenantId);
   }
 
+  /** Opciones para los selectores de combos y promociones (catálogo completo, sin paginar). */
+  @Get('options')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'operator', 'viewer')
+  options(@GetTenantId() tenantId: string) {
+    return this.combosService.catalogOptions(tenantId);
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'operator', 'viewer')

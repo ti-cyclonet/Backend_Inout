@@ -69,6 +69,63 @@ export class CombosService {
     return out;
   }
 
+  /**
+   * Todo lo que se puede elegir al armar combos y promociones, en una sola
+   * llamada y sin paginar: productos, materiales (de reventa o como insumo),
+   * combos, kits y categorías.
+   */
+  async catalogOptions(tenantId: string) {
+    const q = (sql: string) => this.dataSource.query(sql, [tenantId]);
+    const [products, materials, materialsT, combos, categories] = await Promise.all([
+      q(`SELECT "strId", "strName", "fltPrice", "fltCost", "ingQuantity", "ingReservedStock", "intCategoryId", "blnMadeToOrder", "strStatus"
+         FROM manufacturing.products WHERE "strTenantId" = $1 ORDER BY "strName"`),
+      q(`SELECT "strId", "strName", "strUnitMeasure", "blnForResale", "strSalePresentation", "fltPresentationQuantity", "fltSalePrice", "fltPrice", "ingQuantity", "ingReservedStock", "categoryId", "strStatus"
+         FROM manufacturing.materials WHERE "strTenantId" = $1 ORDER BY "strName"`),
+      q(`SELECT "strId", "strName", "strUnitMeasure", "blnForResale", "strSalePresentation", "fltPresentationQuantity", "fltSalePrice", "fltPrice", "ingQuantity", "ingReservedStock", "categoryId", "strStatus"
+         FROM manufacturing."materials-t" WHERE "strTenantId" = $1 ORDER BY "strName"`),
+      q(`SELECT "strId", "strName", "strType", "fltPrice", "strStatus" FROM manufacturing.combos WHERE "strTenantId" = $1 ORDER BY "strName"`),
+      q(`SELECT id, name FROM manufacturing.categories WHERE "tenantId" = $1 ORDER BY name`).catch(() => []),
+    ]);
+    const free = (r: any) => Math.max(0, num(r.ingQuantity) - num(r.ingReservedStock));
+    const material = (type: 'material' | 'material_t') => (m: any) => {
+      const factor = num(m.fltPresentationQuantity);
+      const resale = !!m.blnForResale && factor > 0;
+      return {
+        itemType: type,
+        id: m.strId,
+        name: m.strName,
+        saleName: resale ? `${m.strName} - ${m.strSalePresentation || ''}`.trim() : null,
+        unit: m.strUnitMeasure || null,
+        resale,
+        listPrice: resale ? num(m.fltSalePrice) : 0,
+        /** Costo por unidad de medida y unidades de medida por presentación. */
+        stockUnitCost: num(m.fltPrice),
+        presentationFactor: resale ? factor : 1,
+        /** Stock en unidad de medida y, si es de reventa, en presentaciones. */
+        stock: free(m),
+        saleStock: resale ? Math.floor(free(m) / factor) : null,
+        categoryId: m.categoryId ?? null,
+        active: m.strStatus !== 'inactive',
+      };
+    };
+    return {
+      items: [
+        ...products.map((p: any) => ({
+          itemType: 'product', id: p.strId, name: p.strName, saleName: p.strName, unit: 'und', resale: true,
+          listPrice: num(p.fltPrice), stockUnitCost: num(p.fltCost), presentationFactor: 1,
+          stock: free(p), saleStock: free(p), categoryId: p.intCategoryId ?? null,
+          madeToOrder: !!p.blnMadeToOrder, active: p.strStatus !== 'inactive',
+        })),
+        ...materials.map(material('material')),
+        ...materialsT.map(material('material_t')),
+      ],
+      combos: combos.map((c: any) => ({
+        itemType: c.strType === 'KIT' ? 'kit' : 'combo', id: c.strId, name: c.strName, listPrice: num(c.fltPrice), active: c.strStatus === 'active',
+      })),
+      categories: categories.map((c: any) => ({ id: String(c.id), name: c.name })),
+    };
+  }
+
   async findAssemblies(tenantId: string, id: string) {
     await this.getCombo(tenantId, id);
     return this.assemblyRepo.find({
@@ -135,6 +192,8 @@ export class CombosService {
         quantityMode: l.facts.quantityMode,
         unitMeasure: l.entity.strUnitMeasure || null,
         listPrice: l.facts.listPrice,
+        stockUnitCost: l.facts.stockUnitCost,
+        presentationFactor: l.facts.presentationFactor,
         stockAvailable: l.facts.availableStock,
         madeToOrder: !!l.facts.madeToOrder,
       })),
