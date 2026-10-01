@@ -59,6 +59,10 @@ import { OrderPayment } from './orders/entities/order-payment.entity';
 import { OrderSettings } from './orders/entities/order-settings.entity';
 import { TenantBranding } from './tenant-branding/entities/tenant-branding.entity';
 import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
+import { CombosModule } from './combos/combos.module';
+import { Combo } from './combos/entities/combo.entity';
+import { ComboComponent } from './combos/entities/combo-component.entity';
+import { ComboAssembly } from './combos/entities/combo-assembly.entity';
 
 @Module({
   imports: [
@@ -73,7 +77,7 @@ import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -82,6 +86,7 @@ import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
     }),
     AuthModule,
     TenantBrandingModule,
+    CombosModule,
     BusinessParamsModule,
     MaterialsModule,
     MaterialsTModule, 

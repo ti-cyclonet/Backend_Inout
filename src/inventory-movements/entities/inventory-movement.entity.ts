@@ -18,11 +18,15 @@ export class InventoryMovement {
   @Column({ type: 'uuid', nullable: true })
   strProductId: string;
 
+  /** Kit armado (combos.strType = 'KIT'): armado, desarmado y venta del kit. */
+  @Column({ type: 'uuid', nullable: true })
+  strComboId: string;
+
   @Column({ type: 'varchar', length: 20 })
   strType: string; // 'IN' | 'OUT'
 
   @Column({ type: 'varchar', length: 50 })
-  strReason: string; // 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFORMED_MATERIAL' | 'SALE'
+  strReason: string; // 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFORMED_MATERIAL' | 'SALE' | 'KIT_ASSEMBLY' | 'KIT_DISASSEMBLY'
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   fltQuantity: number;

@@ -11,6 +11,7 @@ import { CreateSaleDto } from './dto/create-sale.dto';
 import { BusinessParamsService } from '../config/business-params.service';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
+import { expandComboLines } from '../combos/combo-lines';
 
 @Injectable()
 export class SalesService {
@@ -75,6 +76,10 @@ export class SalesService {
 
     try {
       const { strProductId, dtmDate, fltQuantity, fltUnitPrice, customerName } = createDto;
+
+      // Combos virtuales: se venden como sus componentes, con el precio del
+      // combo (de la base de datos) prorrateado entre ellos
+      createDto.items = await expandComboLines(queryRunner.manager, tenantId, createDto.items);
 
       // La venta puede traer varios ítems (items[]); antes solo se validaba y
       // descontaba el primero (strProductId/fltQuantity) y el resto salía sin

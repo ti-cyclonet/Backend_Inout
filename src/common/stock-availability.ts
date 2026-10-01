@@ -3,13 +3,14 @@ import { EntityManager } from 'typeorm';
 import { Product } from '../products/entities/product.entity';
 import { Material } from '../materials/entities/material.entity';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
+import { Combo } from '../combos/entities/combo.entity';
 import { normalizeItemType, SellableItemType } from './resale';
 
 export interface StockLine {
   productId: string;
   quantity: number;
   productName?: string;
-  /** 'product' (default), 'material' o 'material_t' (reventa). */
+  /** 'product' (default), 'material' o 'material_t' (reventa), 'kit' (kit armado). */
   itemType?: SellableItemType | string;
   unitPrice?: number;
 }
@@ -29,12 +30,15 @@ export interface ResolvedStockLine {
   entity: any;
 }
 
-const ENTITIES = { product: Product, material: Material, material_t: MaterialT } as const;
+const ENTITIES = { product: Product, material: Material, material_t: MaterialT, kit: Combo } as const;
 const TABLES: Record<SellableItemType, string> = {
   product: 'manufacturing.products',
   material: 'manufacturing.materials',
   material_t: 'manufacturing."materials-t"',
+  kit: 'manufacturing.combos',
 };
+
+const isMaterialType = (t: SellableItemType) => t === 'material' || t === 'material_t';
 
 interface ResolveOptions {
   /** Bloquea las filas (FOR UPDATE); requiere estar dentro de una transacción. */
@@ -62,6 +66,10 @@ export async function resolveStockLines(
 
   for (const line of lines || []) {
     if (!line?.productId) continue;
+    if (line.itemType === 'combo') {
+      // Defensa: los combos virtuales se expanden antes (expandComboLines)
+      throw new BadRequestException('Un combo debe expandirse en sus componentes antes de mover stock.');
+    }
     const itemType = normalizeItemType(line.itemType);
     const key = `${itemType}:${line.productId}`;
 
@@ -78,8 +86,13 @@ export async function resolveStockLines(
       throw new NotFoundException(`Producto ${line.productName || line.productId} no encontrado`);
     }
 
+    // Un kit solo se vende si es un kit armado activo
+    if (itemType === 'kit' && options.requireResale && (entity.strType !== 'KIT' || entity.strStatus !== 'active')) {
+      throw new BadRequestException(`El kit "${entity.strName}" no está disponible para la venta`);
+    }
+
     let factor = 1;
-    if (itemType !== 'product') {
+    if (isMaterialType(itemType)) {
       factor = Number(entity.fltPresentationQuantity) || 0;
       if (options.requireResale && (!entity.blnForResale || factor <= 0)) {
         throw new BadRequestException(`"${entity.strName}" no está habilitado para reventa`);
@@ -92,7 +105,7 @@ export async function resolveStockLines(
     resolved.push({
       itemType,
       id: line.productId,
-      name: itemType === 'product' ? entity.strName : `${entity.strName} - ${entity.strSalePresentation || ''}`.trim(),
+      name: isMaterialType(itemType) ? `${entity.strName} - ${entity.strSalePresentation || ''}`.trim() : entity.strName,
       quantity,
       baseQuantity: quantity * factor,
       baseUnitPrice: unitPrice / factor,
@@ -179,8 +192,9 @@ export async function applyStockDelta(
 }
 
 /** Columna de InventoryMovement que referencia al ítem según su tipo. */
-export function movementTarget(line: ResolvedStockLine): { strProductId?: string; strMaterialId?: string; strTransformedMaterialId?: string } {
+export function movementTarget(line: ResolvedStockLine): { strProductId?: string; strMaterialId?: string; strTransformedMaterialId?: string; strComboId?: string } {
   if (line.itemType === 'material') return { strMaterialId: line.id };
+  if (line.itemType === 'kit') return { strComboId: line.id };
   if (line.itemType === 'material_t') return { strTransformedMaterialId: line.id };
   return { strProductId: line.id };
 }
