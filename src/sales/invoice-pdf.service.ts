@@ -5,6 +5,7 @@ import { Sale } from './entities/sale.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { BusinessParamsService } from '../config/business-params.service';
 import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
+import { groupComboLines } from '../combos/combo-lines';
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 import * as path from 'path';
@@ -122,7 +123,15 @@ export class InvoicePdfService {
       }];
     }
     try {
-      return typeof sale.items === 'string' ? JSON.parse(sale.items) : sale.items;
+      const raw = typeof sale.items === 'string' ? JSON.parse(sale.items) : sale.items;
+      // Un combo se muestra como una sola línea con lo que incluye
+      return groupComboLines(raw).map((l) => ({
+        product: l.name,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        total: l.total,
+        components: l.components,
+      }));
     } catch {
       return [];
     }
@@ -175,7 +184,9 @@ export class InvoicePdfService {
       ],
       ...items.map((item, idx) => [
         { text: (idx + 1).toString(), alignment: 'center' as const },
-        { text: item.product || item.productName || 'Producto' },
+        item.components?.length
+          ? { stack: [item.product || item.productName || 'Producto', { text: `Incluye: ${item.components.join(', ')}`, fontSize: 8, color: '#666' }] }
+          : { text: item.product || item.productName || 'Producto' },
         { text: (item.quantity || 0).toString(), alignment: 'center' as const },
         { text: this.formatCurrency(parseFloat(item.unitPrice?.toString() || '0')), alignment: 'right' as const },
         { text: this.formatCurrency(parseFloat(item.total?.toString() || '0')), alignment: 'right' as const },

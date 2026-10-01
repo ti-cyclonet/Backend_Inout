@@ -13,9 +13,10 @@ import { Customer } from '../customers/entities/customer.entity';
 import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 import { CreditModule } from '../credit/credit.module';
 import { TenantBrandingModule } from '../tenant-branding/tenant-branding.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule],
+  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule, PromotionsModule],
   controllers: [SalesController],
   providers: [SalesService, InvoicePdfService],
   exports: [SalesService],

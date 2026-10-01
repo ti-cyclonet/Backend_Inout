@@ -2,11 +2,13 @@ import { BadRequestException } from '@nestjs/common';
 
 /**
  * Tipo de ítem vendible. Los pedidos/ventas históricos no traen itemType:
- * se asume 'product'.
+ * se asume 'product'. 'kit' = kit armado con stock propio (combos KIT).
+ * Los combos VIRTUALES ('combo') no llegan aquí: se expanden antes en sus
+ * componentes (combos/combo-lines.ts).
  */
-export type SellableItemType = 'product' | 'material' | 'material_t';
+export type SellableItemType = 'product' | 'material' | 'material_t' | 'kit';
 
-export const SELLABLE_ITEM_TYPES: SellableItemType[] = ['product', 'material', 'material_t'];
+export const SELLABLE_ITEM_TYPES: SellableItemType[] = ['product', 'material', 'material_t', 'kit'];
 
 export function normalizeItemType(value: any): SellableItemType {
   return SELLABLE_ITEM_TYPES.includes(value) ? value : 'product';

@@ -9,6 +9,8 @@ import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/creat
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
 import { previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
+import { expandComboLines } from '../combos/combo-lines';
+import { PricingService } from '../promotions/pricing.service';
 import { assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import {
@@ -50,7 +52,21 @@ export class OrdersService {
     private dataSource: DataSource,
     private creditService: CreditService,
     private marketplaceConfigService: MarketplaceConfigService,
+    private pricingService: PricingService,
   ) {}
+
+  /**
+   * MarketPlace: el SERVIDOR pone el precio de cada línea (precio normal y
+   * mejor promoción vigente), el subtotal y el total. Antes se tomaban los
+   * del navegador, que el comprador podía alterar.
+   */
+  private async priceMarketplaceOrder(createDto: CreateMarketplaceOrderDto): Promise<void> {
+    const priced = await this.pricingService.priceLines(createDto.tenantId, createDto.items, 'MARKETPLACE', 'ENFORCE');
+    createDto.items = priced.items;
+    createDto.subtotal = priced.subtotal;
+    createDto.tax = 0;
+    createDto.total = priced.subtotal;
+  }
 
   // ─── Tiempos por etapa y cola ───
 
@@ -137,7 +153,8 @@ export class OrdersService {
     const scheduling = resolveScheduling(config?.scheduling);
     if (!scheduling.enabled) return { enabled: false, date, earliestReadyAt: null, slotMinutes: scheduling.slotMinutes, slots: [] };
 
-    const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
+    const expanded = await expandComboLines(this.dataSource.manager, tenantId, items);
+    const preview = await previewOrderStock(this.dataSource.manager, tenantId, expanded);
     const timing = await this.getTimingSettings(tenantId);
     const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing);
     const slots = buildSlots(date, scheduling, {
@@ -336,6 +353,10 @@ export class OrdersService {
   }
 
   async create(createDto: CreateOrderDto, tenantId: string) {
+    // Precio normal + promoción vigente (se respeta el precio que el usuario
+    // haya escrito) y combos virtuales -> sus componentes
+    createDto.items = (await this.pricingService.priceLines(tenantId, createDto.items, 'POS', 'SUGGEST')).items;
+    createDto.items = await expandComboLines(this.dataSource.manager, tenantId, createDto.items);
     const slot = createDto.scheduledStart
       ? await this.resolvePanelSchedule(tenantId, createDto.scheduledStart, createDto.items || [], !!createDto.allowSlotOverride)
       : null;
@@ -372,6 +393,7 @@ export class OrdersService {
    * además queda registrado en Authoriza como cliente potencial (best-effort,
    * no bloquea el pedido si esa llamada falla). */
   async createFromMarketplace(createDto: CreateMarketplaceOrderDto, meta: ConsentMeta = {}) {
+    await this.priceMarketplaceOrder(createDto);
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: null,
       customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
@@ -394,6 +416,8 @@ export class OrdersService {
   /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
    * userId real de Authoriza en vez de solo un texto libre. */
   async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
+    // Primero el precio del servidor: el cupo de crédito se valida con él
+    await this.priceMarketplaceOrder(createDto);
     // Compra a crédito: el cliente debe tener cupo disponible y estar al día.
     // La cuenta por cobrar se crea al facturar el pedido.
     if (this.requestedPlan(createDto) === 'CREDITO') {
@@ -449,6 +473,8 @@ export class OrdersService {
     const marketplaceConfig = createDto.scheduledStart ? await this.marketplaceConfigService.getConfig(tenantId) : null;
 
     return this.dataSource.transaction(async (manager) => {
+      // Combos virtuales -> sus componentes (precio del combo prorrateado)
+      createDto.items = await expandComboLines(manager, tenantId, createDto.items);
       // Reserva lo disponible; lo que falte de productos "bajo pedido" queda por fabricar
       const stock = await reserveOrderStock(manager, tenantId, createDto.items);
 
@@ -823,6 +849,10 @@ export class OrdersService {
     }
 
     const { scheduledStart, allowSlotOverride, ...rest } = updateDto;
+    if (rest.items) {
+      rest.items = (await this.pricingService.priceLines(tenantId, rest.items, 'POS', 'SUGGEST')).items;
+      rest.items = await expandComboLines(this.dataSource.manager, tenantId, rest.items);
+    }
     Object.assign(order, {
       ...rest,
       deliveryDate: rest.deliveryDate ? new Date(rest.deliveryDate) : order.deliveryDate,

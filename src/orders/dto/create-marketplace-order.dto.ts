@@ -20,9 +20,10 @@ export class MarketplaceOrderItemDto {
   @IsNumber()
   subtotal: number;
 
-  /** 'product' (default) o material de reventa ('material' | 'material_t'). */
+  /** 'product' (default), material de reventa ('material' | 'material_t'),
+   * kit armado ('kit') o combo virtual ('combo'). El precio lo pone el servidor. */
   @IsOptional()
-  @IsIn(['product', 'material', 'material_t'])
+  @IsIn(['product', 'material', 'material_t', 'kit', 'combo'])
   itemType?: string;
 }
 
