@@ -14,6 +14,7 @@ import { OrderPaymentsService } from './order-payments.service';
 import { OrderAutomationService } from './order-automation.service';
 import { MarketplaceConfigModule } from '../marketplace-config/marketplace-config.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
     CreditModule,
     MarketplaceConfigModule,
     CloudinaryModule,
+    PromotionsModule,
   ],
   controllers: [OrdersMarketplaceController, OrdersController],
   providers: [OrdersService, OrderPaymentsService, OrderAutomationService],

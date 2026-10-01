@@ -10,6 +10,7 @@ import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
 import { previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
 import { expandComboLines } from '../combos/combo-lines';
+import { PricingService } from '../promotions/pricing.service';
 import { assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import {
@@ -51,7 +52,21 @@ export class OrdersService {
     private dataSource: DataSource,
     private creditService: CreditService,
     private marketplaceConfigService: MarketplaceConfigService,
+    private pricingService: PricingService,
   ) {}
+
+  /**
+   * MarketPlace: el SERVIDOR pone el precio de cada línea (precio normal y
+   * mejor promoción vigente), el subtotal y el total. Antes se tomaban los
+   * del navegador, que el comprador podía alterar.
+   */
+  private async priceMarketplaceOrder(createDto: CreateMarketplaceOrderDto): Promise<void> {
+    const priced = await this.pricingService.priceLines(createDto.tenantId, createDto.items, 'MARKETPLACE', 'ENFORCE');
+    createDto.items = priced.items;
+    createDto.subtotal = priced.subtotal;
+    createDto.tax = 0;
+    createDto.total = priced.subtotal;
+  }
 
   // ─── Tiempos por etapa y cola ───
 
@@ -338,7 +353,9 @@ export class OrdersService {
   }
 
   async create(createDto: CreateOrderDto, tenantId: string) {
-    // Combos virtuales -> sus componentes (precio del combo prorrateado)
+    // Precio normal + promoción vigente (se respeta el precio que el usuario
+    // haya escrito) y combos virtuales -> sus componentes
+    createDto.items = (await this.pricingService.priceLines(tenantId, createDto.items, 'POS', 'SUGGEST')).items;
     createDto.items = await expandComboLines(this.dataSource.manager, tenantId, createDto.items);
     const slot = createDto.scheduledStart
       ? await this.resolvePanelSchedule(tenantId, createDto.scheduledStart, createDto.items || [], !!createDto.allowSlotOverride)
@@ -376,6 +393,7 @@ export class OrdersService {
    * además queda registrado en Authoriza como cliente potencial (best-effort,
    * no bloquea el pedido si esa llamada falla). */
   async createFromMarketplace(createDto: CreateMarketplaceOrderDto, meta: ConsentMeta = {}) {
+    await this.priceMarketplaceOrder(createDto);
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: null,
       customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
@@ -398,6 +416,8 @@ export class OrdersService {
   /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
    * userId real de Authoriza en vez de solo un texto libre. */
   async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
+    // Primero el precio del servidor: el cupo de crédito se valida con él
+    await this.priceMarketplaceOrder(createDto);
     // Compra a crédito: el cliente debe tener cupo disponible y estar al día.
     // La cuenta por cobrar se crea al facturar el pedido.
     if (this.requestedPlan(createDto) === 'CREDITO') {
@@ -829,7 +849,10 @@ export class OrdersService {
     }
 
     const { scheduledStart, allowSlotOverride, ...rest } = updateDto;
-    if (rest.items) rest.items = await expandComboLines(this.dataSource.manager, tenantId, rest.items);
+    if (rest.items) {
+      rest.items = (await this.pricingService.priceLines(tenantId, rest.items, 'POS', 'SUGGEST')).items;
+      rest.items = await expandComboLines(this.dataSource.manager, tenantId, rest.items);
+    }
     Object.assign(order, {
       ...rest,
       deliveryDate: rest.deliveryDate ? new Date(rest.deliveryDate) : order.deliveryDate,

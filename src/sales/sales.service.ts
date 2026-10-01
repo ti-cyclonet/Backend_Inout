@@ -12,6 +12,7 @@ import { BusinessParamsService } from '../config/business-params.service';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
 import { expandComboLines } from '../combos/combo-lines';
+import { PricingService } from '../promotions/pricing.service';
 
 @Injectable()
 export class SalesService {
@@ -31,6 +32,7 @@ export class SalesService {
     private dataSource: DataSource,
     private businessParamsService: BusinessParamsService,
     private creditService: CreditService,
+    private pricingService: PricingService,
   ) {}
 
   private async generateInvoiceCode(tenantId: string): Promise<string> {
@@ -77,8 +79,12 @@ export class SalesService {
     try {
       const { strProductId, dtmDate, fltQuantity, fltUnitPrice, customerName } = createDto;
 
+      // Precio normal + mejor promoción vigente (si el usuario escribió otro
+      // precio se respeta y la promoción no se marca como aplicada)
+      const priced = await this.pricingService.priceLines(tenantId, createDto.items, 'POS', 'SUGGEST', { manager: queryRunner.manager });
+      createDto.items = priced.items;
       // Combos virtuales: se venden como sus componentes, con el precio del
-      // combo (de la base de datos) prorrateado entre ellos
+      // combo prorrateado entre ellos
       createDto.items = await expandComboLines(queryRunner.manager, tenantId, createDto.items);
 
       // La venta puede traer varios ítems (items[]); antes solo se validaba y
@@ -128,16 +134,26 @@ export class SalesService {
       // Descuento: si el cliente envía uno manual, validarlo contra el máximo
       // permitido; si no envía nada, aplicar automáticamente el % de descuento
       // configurado para el periodo activo (PORCENTAJE_DESCUENTO).
+      // Con promociones aplicadas, el tope (PORCENTAJE_DESCUENTO_MAX) cubre la
+      // suma de promociones + descuento, sobre el precio normal.
+      const promoDiscount = priced.promoDiscount;
+      const listBase = promoDiscount > 0 ? priced.listSubtotal : subtotal;
       let discount = createDto.discount;
       if (discount) {
-        const discountPercent = (discount / subtotal) * 100;
+        const discountPercent = ((discount + promoDiscount) / listBase) * 100;
         if (discountPercent > params.PORCENTAJE_DESCUENTO_MAX) {
           throw new BadRequestException(
-            `El descuento (${discountPercent.toFixed(1)}%) excede el máximo permitido (${params.PORCENTAJE_DESCUENTO_MAX}%)`
+            promoDiscount > 0
+              ? `El descuento más las promociones (${discountPercent.toFixed(1)}%) excede el máximo permitido (${params.PORCENTAJE_DESCUENTO_MAX}%)`
+              : `El descuento (${discountPercent.toFixed(1)}%) excede el máximo permitido (${params.PORCENTAJE_DESCUENTO_MAX}%)`
           );
         }
       } else {
         discount = await this.businessParamsService.calculateAutoDiscount(tenantId, subtotal);
+        if (promoDiscount > 0) {
+          const room = Math.max(0, (listBase * Number(params.PORCENTAJE_DESCUENTO_MAX ?? 100)) / 100 - promoDiscount);
+          discount = Math.round(Math.min(discount, room) * 100) / 100;
+        }
       }
 
       if (!total) {

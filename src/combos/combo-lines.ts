@@ -13,6 +13,10 @@ export interface ComboLineInfo {
   comboName: string;
   comboQuantity: number;
   comboUnitPrice: number;
+  /** Precio normal del combo (sin promoción). */
+  comboListPrice?: number;
+  /** Promoción aplicada al combo (foto al momento de la venta). */
+  promotion?: any;
 }
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
@@ -26,8 +30,10 @@ const round4 = (n: number) => Math.round(n * 10000) / 10000;
  * reportes por producto) funciona sin cambios, y la interfaz agrupa las
  * líneas por `combo.groupId` para mostrarlas como un solo combo.
  *
- * El precio del combo sale de la base de datos, no del cliente. Las demás
- * líneas pasan tal cual; las ya expandidas (traen `combo`) también.
+ * El precio del combo sale de la base de datos, no del cliente: o el que
+ * dejó PricingService en `serverUnitPrice` (con la promoción aplicada), o el
+ * precio del combo. Las demás líneas pasan tal cual; las ya expandidas
+ * (traen `combo`) también.
  */
 export async function expandComboLines<T extends { productId: string; quantity: number; itemType?: string }>(
   manager: EntityManager,
@@ -60,13 +66,17 @@ export async function expandComboLines<T extends { productId: string; quantity: 
     const loaded = await loadComponents(manager, tenantId, combo.components);
     assertSellableComponents(loaded);
 
-    const comboUnitPrice = Number(combo.fltPrice) || 0;
+    const listPrice = Number(combo.fltPrice) || 0;
+    const server = (item as any).serverUnitPrice;
+    const comboUnitPrice = typeof server === 'number' && server >= 0 ? server : listPrice;
     const info: ComboLineInfo = {
       groupId: randomUUID(),
       comboId: combo.strId,
       comboName: combo.strName,
       comboQuantity,
       comboUnitPrice,
+      comboListPrice: listPrice,
+      ...((item as any).promotion ? { promotion: (item as any).promotion } : {}),
     };
     const allocated = prorate(
       comboUnitPrice * comboQuantity,
