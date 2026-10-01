@@ -158,11 +158,22 @@ export class OrderPaymentsService {
       status: order.status,
       createdAt: order.createdAt,
       customerName: (order.customerName || '').split(' | ')[0],
-      items: (order.items || []).map((i) => ({
+      items: (order.items || []).map((i: any) => ({
         productName: i.productName,
         quantity: i.quantity,
         subtotal: i.subtotal,
         toManufacture: toManufactureOf(i as any),
+        // Solo lo necesario para mostrar el combo agrupado y la promoción
+        ...(i.combo ? {
+          combo: {
+            groupId: i.combo.groupId,
+            comboName: i.combo.comboName,
+            comboQuantity: i.combo.comboQuantity,
+            comboUnitPrice: i.combo.comboUnitPrice,
+            ...(i.combo.promotion ? { promotion: { name: i.combo.promotion.name } } : {}),
+          },
+        } : {}),
+        ...(i.promotion ? { promotion: { name: i.promotion.name } } : {}),
       })),
       total: Number(order.total),
       paymentPlan: order.paymentPlan,
