@@ -57,6 +57,8 @@ import { StockTransfer } from './warehouses/entities/stock-transfer.entity';
 import { PhysicalCount } from './warehouses/entities/physical-count.entity';
 import { OrderPayment } from './orders/entities/order-payment.entity';
 import { OrderSettings } from './orders/entities/order-settings.entity';
+import { TenantBranding } from './tenant-branding/entities/tenant-branding.entity';
+import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
 
 @Module({
   imports: [
@@ -71,7 +73,7 @@ import { OrderSettings } from './orders/entities/order-settings.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -79,6 +81,7 @@ import { OrderSettings } from './orders/entities/order-settings.entity';
       },
     }),
     AuthModule,
+    TenantBrandingModule,
     BusinessParamsModule,
     MaterialsModule,
     MaterialsTModule, 
