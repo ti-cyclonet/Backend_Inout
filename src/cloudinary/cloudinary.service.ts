@@ -48,4 +48,9 @@ export class CloudinaryService {
       });
     });
   }
+
+  /** Borra un recurso por su public_id (p. ej. el logo reemplazado). */
+  async destroy(publicId: string): Promise<void> {
+    await cloudinary.uploader.destroy(publicId);
+  }
 }

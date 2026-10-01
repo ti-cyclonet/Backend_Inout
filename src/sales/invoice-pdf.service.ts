@@ -4,10 +4,27 @@ import { Repository } from 'typeorm';
 import { Sale } from './entities/sale.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { BusinessParamsService } from '../config/business-params.service';
+import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
 
+import * as path from 'path';
+
+// pdfmake 0.3 (servidor): exporta una instancia con setFonts/createPdf. La
+// API de 0.2 (`new PdfPrinter(fonts)`) ya no existe: con ella el endpoint
+// /sales/:id/invoice-pdf fallaba siempre con "PdfPrinter is not a constructor".
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const PdfPrinter = require('pdfmake');
+const pdfmake = require('pdfmake');
+const ROBOTO_DIR = path.join(path.dirname(require.resolve('pdfmake/package.json')), 'fonts', 'Roboto');
+pdfmake.setFonts({
+  Roboto: {
+    normal: path.join(ROBOTO_DIR, 'Roboto-Regular.ttf'),
+    bold: path.join(ROBOTO_DIR, 'Roboto-Medium.ttf'),
+    italics: path.join(ROBOTO_DIR, 'Roboto-Italic.ttf'),
+    bolditalics: path.join(ROBOTO_DIR, 'Roboto-MediumItalic.ttf'),
+  },
+});
+// Solo se incrustan imágenes en data URL (el logo se descarga antes); nada remoto.
+pdfmake.setUrlAccessPolicy(() => false);
 
 @Injectable()
 export class InvoicePdfService {
@@ -17,6 +34,7 @@ export class InvoicePdfService {
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
     private businessParamsService: BusinessParamsService,
+    private tenantBrandingService: TenantBrandingService,
   ) {}
 
   async generateInvoicePdf(saleId: string, tenantId: string): Promise<Buffer> {
@@ -36,8 +54,12 @@ export class InvoicePdfService {
       });
     }
 
-    // Get business data from Authoriza
-    const businessData = await this.getBusinessData(tenantId);
+    // Get business data from Authoriza (+ logo del negocio, si lo configuró)
+    const [businessData, logo] = await Promise.all([
+      this.getBusinessData(tenantId),
+      this.tenantBrandingService.getLogoDataUrl(tenantId),
+    ]);
+    businessData.logo = logo;
 
     // Parse items
     const items = this.parseItems(sale);
@@ -167,6 +189,8 @@ export class InvoicePdfService {
         // Header - Business info
         {
           columns: [
+            // Logo del negocio (Configuración > Identidad del negocio)
+            ...(business.logo ? [{ image: business.logo, fit: [70, 70] as [number, number], width: 80 }] : []),
             {
               width: '*',
               stack: [
@@ -291,25 +315,8 @@ export class InvoicePdfService {
     } as TDocumentDefinitions;
   }
 
-  private createPdfBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {
-    const fonts = {
-      Roboto: {
-        normal: 'node_modules/pdfmake/build/vfs_fonts.js',
-        bold: 'node_modules/pdfmake/build/vfs_fonts.js',
-        italics: 'node_modules/pdfmake/build/vfs_fonts.js',
-        bolditalics: 'node_modules/pdfmake/build/vfs_fonts.js',
-      },
-    };
-
-    const printer = new PdfPrinter(fonts);
-    const pdfDoc = printer.createPdfKitDocument(docDefinition);
-
-    return new Promise((resolve, reject) => {
-      const chunks: Uint8Array[] = [];
-      pdfDoc.on('data', (chunk: Uint8Array) => chunks.push(chunk));
-      pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
-      pdfDoc.on('error', reject);
-      pdfDoc.end();
-    });
+  private async createPdfBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {
+    const buffer = await pdfmake.createPdf(docDefinition).getBuffer();
+    return Buffer.from(buffer);
   }
 }
