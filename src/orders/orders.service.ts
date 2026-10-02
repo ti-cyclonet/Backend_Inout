@@ -262,9 +262,14 @@ export class OrdersService {
    * franja. Si no, según la etapa: la cola de producción (espera + fabricación)
    * y luego los tiempos de Listo y En reparto. Null si no hay con qué estimar.
    */
-  async estimateDelivery(order: Order): Promise<{ at: Date; end: Date | null; scheduled: boolean } | null> {
+  async estimateDelivery(order: Order): Promise<{ at: Date; end: Date | null; scheduled: boolean; late?: boolean } | null> {
     if (order.scheduledStart && ![OrderStatus.DELIVERED, OrderStatus.INVOICED, OrderStatus.CANCELLED].includes(order.status)) {
-      return { at: new Date(order.scheduledStart), end: order.scheduledEnd ? new Date(order.scheduledEnd) : null, scheduled: true };
+      const start = new Date(order.scheduledStart);
+      const end = order.scheduledEnd ? new Date(order.scheduledEnd) : null;
+      // Franja ya vencida y el pedido sin entregar: se avisa el retraso en vez
+      // de mostrarla como si aún estuviera por llegar
+      const late = (end || start).getTime() < Date.now();
+      return { at: start, end, scheduled: true, ...(late ? { late: true } : {}) };
     }
     const settings = await this.getTimingSettings(order.tenantId);
     const minutes = (s: OrderStatus) => settings.stageDurations[s as keyof typeof settings.stageDurations] || 0;
