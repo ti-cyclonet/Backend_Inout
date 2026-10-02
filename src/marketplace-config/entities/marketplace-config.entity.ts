@@ -43,6 +43,10 @@ export class MarketplaceConfig {
   @Column({ type: 'json', nullable: true })
   scheduling: Record<string, any> | null;
 
+  /** Textos de la modal de agradecimiento al entregar (ver orders/thanks-messages.ts). Null = por defecto. */
+  @Column({ type: 'json', nullable: true })
+  thanksMessages: Record<string, any> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

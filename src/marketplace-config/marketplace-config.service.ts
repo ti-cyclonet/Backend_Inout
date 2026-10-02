@@ -62,6 +62,17 @@ export class MarketplaceConfigService {
     return scheduling;
   }
 
+  /** Guarda los textos de agradecimiento (ya normalizados con resolveThanksMessages). */
+  async updateThanksMessages(tenantId: string, thanksMessages: Record<string, any>) {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego el mensaje de agradecimiento.');
+    }
+    config.thanksMessages = thanksMessages;
+    await this.marketplaceConfigRepository.save(config);
+    return thanksMessages;
+  }
+
   async getConfig(tenantId: string): Promise<MarketplaceConfig | null> {
     return await this.marketplaceConfigRepository.findOne({
       where: { tenantId },

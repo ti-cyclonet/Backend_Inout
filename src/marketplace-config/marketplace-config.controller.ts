@@ -4,6 +4,7 @@ import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { resolvePaymentOptions } from '../orders/payment-plans';
 import { resolveScheduling } from '../orders/scheduling';
+import { resolveThanksMessages } from '../orders/thanks-messages';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -77,6 +78,22 @@ export class MarketplaceConfigController {
       throw new ForbiddenException('No tienes permisos para modificar este marketplace');
     }
     return this.marketplaceConfigService.updateScheduling(tenantId, resolveScheduling(body));
+  }
+
+  /** Textos de la modal de agradecimiento al entregar el pedido. */
+  @Get(':tenantId/thanks-messages')
+  async getThanksMessages(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return resolveThanksMessages(config?.thanksMessages);
+  }
+
+  @Patch(':tenantId/thanks-messages')
+  @UseGuards(JwtAuthGuard)
+  async updateThanksMessages(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.updateThanksMessages(tenantId, resolveThanksMessages(body));
   }
 
   @Get(':tenantId')
