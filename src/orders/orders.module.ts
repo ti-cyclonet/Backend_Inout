@@ -12,6 +12,8 @@ import { OrderPayment } from './entities/order-payment.entity';
 import { OrderSettings } from './entities/order-settings.entity';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrderAutomationService } from './order-automation.service';
+import { ShotraDeliveryService } from './shotra-delivery.service';
+import { TenantBrandingModule } from '../tenant-branding/tenant-branding.module';
 import { MarketplaceConfigModule } from '../marketplace-config/marketplace-config.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { PromotionsModule } from '../promotions/promotions.module';
@@ -24,9 +26,10 @@ import { PromotionsModule } from '../promotions/promotions.module';
     MarketplaceConfigModule,
     CloudinaryModule,
     PromotionsModule,
+    TenantBrandingModule,
   ],
   controllers: [OrdersMarketplaceController, OrdersController],
-  providers: [OrdersService, OrderPaymentsService, OrderAutomationService],
+  providers: [OrdersService, OrderPaymentsService, OrderAutomationService, ShotraDeliveryService],
   exports: [OrdersService, OrderPaymentsService],
 })
 export class OrdersModule {}

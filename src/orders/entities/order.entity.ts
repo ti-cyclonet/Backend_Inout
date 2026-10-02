@@ -122,6 +122,10 @@ export class Order {
   @Column({ type: 'timestamptz', nullable: true })
   estimatedReadyAt: Date | null;
 
+  /** Solicitud de domicilio en Shotra: el pedido avanza solo con el contrato (ver shotra-delivery.service.ts). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  shotraRequestId: string | null;
+
   /** Token del enlace de seguimiento: el comprador (aun invitado) ve su pedido y sube comprobantes. */
   @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
   trackingToken: string | null;

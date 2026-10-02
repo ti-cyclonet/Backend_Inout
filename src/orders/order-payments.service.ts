@@ -9,6 +9,8 @@ import { toManufactureOf } from '../common/order-stock';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import { OrdersService } from './orders.service';
 import { resolvePaymentOptions } from './payment-plans';
+import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
+import { logoVariant } from '../tenant-branding/logo-url';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
@@ -44,7 +46,42 @@ export class OrderPaymentsService {
     private readonly cloudinaryService: CloudinaryService,
     private readonly marketplaceConfigService: MarketplaceConfigService,
     private readonly ordersService: OrdersService,
+    private readonly brandingService: TenantBrandingService,
   ) {}
+
+  /**
+   * Para la ventana de agradecimiento del pedido entregado: logo de la tienda
+   * e imágenes de lo que compró (combo: su foto; producto/material: su primera
+   * imagen), sin repetir y máximo 4.
+   */
+  private async thanksFor(order: Order) {
+    const items: any[] = Array.isArray(order.items) ? order.items : [];
+    const images: string[] = [];
+    const add = (url?: string | null) => { if (url && !images.includes(url) && images.length < 4) images.push(url); };
+
+    const comboIds = [...new Set(items.map((i) => i.combo?.comboId).filter(Boolean))];
+    if (comboIds.length) {
+      const rows = await this.dataSource.query(
+        `SELECT "strImageUrl" FROM manufacturing.combos WHERE "strId" = ANY($1::uuid[]) AND "strTenantId" = $2`,
+        [comboIds, order.tenantId],
+      ).catch(() => []);
+      rows.forEach((r: any) => add(logoVariant(r.strImageUrl, 'web')));
+    }
+    const typeOf: Record<string, string> = { product: 'product', material: 'material', material_t: 'material-t' };
+    for (const i of items) {
+      if (images.length >= 4) break;
+      if (i.combo || !i.productId) continue;
+      const entityType = typeOf[i.itemType || 'product'];
+      if (!entityType) continue;
+      const row = await this.dataSource.query(
+        `SELECT "strImageUrl" FROM manufacturing.images WHERE "strEntityId" = $1 AND "strEntityType" = $2 AND "strStatus" = 'active' ORDER BY "dtmCreationDate" ASC LIMIT 1`,
+        [i.productId, entityType],
+      ).catch(() => []);
+      add(row[0]?.strImageUrl || null);
+    }
+    const branding = await this.brandingService.get(order.tenantId).catch(() => null);
+    return { storeLogoUrl: branding?.logoWebUrl || null, images };
+  }
 
   async listForOrder(tenantId: string, orderId: string) {
     return this.paymentRepository.find({ where: { tenantId, orderId }, order: { createdAt: 'DESC' } });
@@ -188,6 +225,8 @@ export class OrderPaymentsService {
       scheduledEnd: order.scheduledEnd,
       /** Datos de pago de la tienda (cuentas, Nequi…) para consignar. */
       paymentInstructions: resolvePaymentOptions(config?.paymentOptions).instructions,
+      /** Pedido entregado: datos para la ventana de agradecimiento al cliente. */
+      thanks: order.status === OrderStatus.DELIVERED || order.status === OrderStatus.INVOICED ? { ...(await this.thanksFor(order)), brandColor: config?.brandColor || null } : null,
       payments: payments.map((p) => ({
         amount: Number(p.amount),
         method: p.method,

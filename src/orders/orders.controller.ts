@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, OrderSlotsQueryDto, UpdateOrderStatusDto } from './dto/create-order.dto';
@@ -13,6 +13,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { BusinessParamsService } from '../config/business-params.service';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrderPaymentDto, ReviewOrderPaymentDto } from './dto/order-payment.dto';
+import { ShotraDeliveryService } from './shotra-delivery.service';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,7 +22,25 @@ export class OrdersController {
     private readonly ordersService: OrdersService,
     private readonly businessParamsService: BusinessParamsService,
     private readonly orderPaymentsService: OrderPaymentsService,
+    private readonly shotraDelivery: ShotraDeliveryService,
   ) {}
+
+  /** Liga el pedido a la solicitud de domicilio publicada en Shotra (avanza solo con el contrato). */
+  @Patch(':id/shotra-delivery')
+  @Roles('admin', 'operator')
+  linkShotraDelivery(@Param('id') id: string, @Body() body: { shotraRequestId: string }, @GetTenantId() tenantId: string) {
+    if (!body?.shotraRequestId || typeof body.shotraRequestId !== 'string') {
+      throw new BadRequestException('Falta la solicitud de Shotra.');
+    }
+    return this.shotraDelivery.link(tenantId, id, body.shotraRequestId.trim());
+  }
+
+  /** Sincroniza ya los pedidos con domicilio de Shotra (p. ej. tras cerrar el contrato). */
+  @Post('shotra-sync')
+  @Roles('admin', 'operator')
+  syncShotra(@Body() body: { shotraRequestId?: string }, @GetTenantId() tenantId: string) {
+    return this.shotraDelivery.syncTenant(tenantId, typeof body?.shotraRequestId === 'string' ? body.shotraRequestId : undefined);
+  }
 
   @Post()
   @UseGuards(LimitEnforcementGuard)
