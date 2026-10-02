@@ -52,12 +52,36 @@ export class InventoryMovementsService {
   }
 
   /**
-   * Create movement and update material stock accordingly.
-   * For OUT movements: deducts from material stock.
-   * For IN movements: adds to material stock.
+   * Salida manual desde el kardex (ajuste, merma, devolución…): valida y
+   * descuenta el stock del ítem. Materiales compuestos y productos llegan con
+   * strTransformedMaterialId / strProductId (antes se enviaban como material y
+   * la salida fallaba o quedaba en el kardex equivocado).
+   * Las entradas sin documento van por el saldo inicial o el conteo físico.
    */
   async createAndUpdateStock(data: any) {
-    const { strMaterialId, strType, fltQuantity, strTenantId } = data;
+    const { strMaterialId, strTransformedMaterialId, strProductId, strType, fltQuantity, strTenantId } = data;
+
+    if (strType === 'OUT' && !strMaterialId && (strTransformedMaterialId || strProductId)) {
+      const table = strProductId ? 'manufacturing.products' : 'manufacturing."materials-t"';
+      const id = strProductId || strTransformedMaterialId;
+      return this.repository.manager.transaction(async (manager) => {
+        const rows = await manager.query(
+          `SELECT "ingQuantity" FROM ${table} WHERE "strId" = $1 AND "strTenantId" = $2 FOR UPDATE`,
+          [id, strTenantId],
+        );
+        if (!rows.length) throw new BadRequestException(strProductId ? 'Producto no encontrado' : 'Material compuesto no encontrado');
+        const currentStock = Number(rows[0].ingQuantity) || 0;
+        if (currentStock < Number(fltQuantity)) throw new BadRequestException('Stock insuficiente para esta salida');
+        await manager.query(`UPDATE ${table} SET "ingQuantity" = "ingQuantity" - $1 WHERE "strId" = $2`, [Number(fltQuantity), id]);
+        const movement = manager.create(InventoryMovement, {
+          ...data,
+          strMaterialId: null,
+          strTransformedMaterialId: strProductId ? null : id,
+          strProductId: strProductId || null,
+        });
+        return manager.save(movement);
+      });
+    }
 
     // Validate stock for OUT movements
     if (strType === 'OUT' && strMaterialId) {
