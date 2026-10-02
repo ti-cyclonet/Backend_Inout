@@ -1,6 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+/** Valor de un parámetro Sí/No (dataType 'boolean'): "SI", "Sí", "true", "1"… */
+export function parseBooleanParam(value: unknown): boolean {
+  const v = String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  return ['si', 's', 'true', '1', 'yes', 'y'].includes(v);
+}
+
+/** Cuánto se cachea el valor del plan (cambia solo al cambiar de plan). */
+const PLAN_COST_TTL_MS = 10 * 60 * 1000;
+
 /**
  * Servicio que obtiene los parámetros comerciales configurados
  * por el tenant en su período activo.
@@ -15,6 +24,8 @@ import { ConfigService } from '@nestjs/config';
  * - PUNTOS_POR_COMPRA: puntos por cada compra (default 10)
  * - PUNTOS_POR_PESO: puntos por cada $X gastado (default 10000)
  * - DIAS_VIGENCIA_COTIZACION: días de vigencia de cotización (default 15)
+ * - INCLUIR_PLAN_INOUT (Sí/No): suma el valor mensual del plan pago de InOut
+ *   a los costos indirectos del costeo (default No)
  */
 @Injectable()
 export class BusinessParamsService {
@@ -22,7 +33,7 @@ export class BusinessParamsService {
   private readonly authorizaUrl: string;
 
   // Valores por defecto cuando no hay parámetro configurado
-  private readonly defaults: Record<string, number> = {
+  private readonly defaults: Record<string, any> = {
     IVA_PORCENTAJE: 0,
     IVA_PORCENTAJE_REDUCIDO: 0,
     INC_PORCENTAJE: 0,
@@ -34,7 +45,11 @@ export class BusinessParamsService {
     PUNTOS_POR_COMPRA: 10,
     PUNTOS_POR_PESO: 10000,
     DIAS_VIGENCIA_COTIZACION: 15,
+    INCLUIR_PLAN_INOUT: false,
   };
+
+  /** Valor mensual del plan de InOut por tenant (Authoriza), con caché corta. */
+  private readonly planCostCache = new Map<string, { value: { monthlyValue: number; packageName: string | null }; until: number }>();
 
   constructor(private configService: ConfigService) {
     this.authorizaUrl = this.configService.get<string>('AUTHORIZA_API_URL') || 'http://localhost:3000';
@@ -74,6 +89,8 @@ export class BusinessParamsService {
         const dataType = param.customerParameter?.dataType || 'number';
         if (dataType === 'string') {
           result[code] = param.value || '';
+        } else if (dataType === 'boolean') {
+          result[code] = parseBooleanParam(param.value);
         } else {
           const value = parseFloat(param.value?.toString() || '0');
           if (!isNaN(value)) {
@@ -193,8 +210,34 @@ export class BusinessParamsService {
   }
 
   /**
+   * Valor mensual del plan de InOut del tenant (Authoriza, endpoint interno con
+   * x-internal-key: es información comercial). Plan gratuito o sin contrato → 0.
+   * Si Authoriza no responde, devuelve null (el costeo sigue sin ese rubro).
+   */
+  async getInoutPlanMonthlyCost(tenantId: string): Promise<{ monthlyValue: number; packageName: string | null } | null> {
+    const cached = this.planCostCache.get(tenantId);
+    if (cached && cached.until > Date.now()) return cached.value;
+    try {
+      const res = await fetch(
+        `${this.authorizaUrl}/api/contracts/tenant/${encodeURIComponent(tenantId)}/plan-cost?application=InOut`,
+        { headers: { 'x-internal-key': process.env.INTERNAL_API_KEY || '' }, signal: AbortSignal.timeout(5000) },
+      );
+      if (!res.ok) throw new Error(`Authoriza respondió ${res.status}`);
+      const data: any = await res.json();
+      const value = { monthlyValue: Math.max(0, Number(data?.monthlyValue) || 0), packageName: data?.packageName ?? null };
+      if (this.planCostCache.size > 5000) this.planCostCache.clear();
+      this.planCostCache.set(tenantId, { value, until: Date.now() + PLAN_COST_TTL_MS });
+      return value;
+    } catch (error) {
+      this.logger.warn(`No se pudo obtener el valor del plan de InOut para ${tenantId}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Calcula el total de costos indirectos mensuales (overhead).
-   * Suma: arriendo + agua + energía + gas + internet + nómina.
+   * Suma: arriendo + agua + energía + gas + internet + nómina y, si el negocio
+   * lo decide (INCLUIR_PLAN_INOUT = Sí), el valor mensual de su plan de InOut.
    * Estos costos se distribuyen entre las unidades producidas en el mes.
    */
   async getMonthlyOverhead(tenantId: string): Promise<{
@@ -206,9 +249,18 @@ export class BusinessParamsService {
       gas: number;
       internet: number;
       nomina: number;
+      planInout: number;
     };
+    /** El negocio decidió incluir su plan de InOut en el costeo. */
+    includesInoutPlan: boolean;
+    /** Nombre del plan incluido (null si no se incluye o no se pudo consultar). */
+    inoutPlanName: string | null;
+    /** Se pidió incluir el plan pero Authoriza no respondió: el total va sin él. */
+    inoutPlanUnavailable?: boolean;
   }> {
     const params = await this.getParams(tenantId);
+    const includesInoutPlan = parseBooleanParam(params['INCLUIR_PLAN_INOUT']);
+    const plan = includesInoutPlan ? await this.getInoutPlanMonthlyCost(tenantId) : null;
     const breakdown = {
       arriendo: Number(params['COSTO_ARRIENDO'] || 0),
       agua: Number(params['COSTO_AGUA'] || 0),
@@ -216,9 +268,16 @@ export class BusinessParamsService {
       gas: Number(params['COSTO_GAS'] || 0),
       internet: Number(params['COSTO_INTERNET'] || 0),
       nomina: Number(params['COSTO_NOMINA'] || 0),
+      planInout: plan?.monthlyValue || 0,
     };
     const total = breakdown.arriendo + breakdown.agua + breakdown.energia
-      + breakdown.gas + breakdown.internet + breakdown.nomina;
-    return { total, breakdown };
+      + breakdown.gas + breakdown.internet + breakdown.nomina + breakdown.planInout;
+    return {
+      total,
+      breakdown,
+      includesInoutPlan,
+      inoutPlanName: plan?.packageName ?? null,
+      ...(includesInoutPlan && !plan ? { inoutPlanUnavailable: true } : {}),
+    };
   }
 }
