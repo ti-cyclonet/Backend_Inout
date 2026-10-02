@@ -673,9 +673,18 @@ export class OrdersService {
     newStatus: OrderStatus,
     reason?: string,
     payment: { paymentType?: 'CONTADO' | 'CREDITO'; paymentMethod?: string } = {},
+    options: { system?: boolean } = {},
   ) {
     const order = await this.findOne(id, tenantId);
     const previousStatus = order.status;
+
+    // Domicilio con Shotra: En reparto y Entregado los pone el sistema según el contrato
+    if (order.shotraRequestId && !options.system
+      && (newStatus === OrderStatus.OUT_FOR_DELIVERY || newStatus === OrderStatus.DELIVERED)) {
+      throw new BadRequestException(
+        'Este pedido se entrega con Shotra: pasa a En reparto y a Entregado automáticamente según el contrato del domiciliario.',
+      );
+    }
 
     // Toda cancelación debe quedar justificada (se valida antes de tocar stock)
     const cancellationReason = (reason || '').trim();
