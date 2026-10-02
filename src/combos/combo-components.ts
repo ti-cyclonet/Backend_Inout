@@ -65,6 +65,7 @@ export async function loadComponents(
         presentationFactor: isProduct ? 1 : num(entity.fltPresentationQuantity) || 1,
         availableStock: num(entity.ingQuantity) - num(entity.ingReservedStock),
         madeToOrder: isProduct && !!entity.blnMadeToOrder,
+        leadHours: isProduct ? num(entity.intProductionLeadHours) : 0,
       },
     });
   }

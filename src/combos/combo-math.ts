@@ -17,6 +17,8 @@ export interface ComponentFacts {
   availableStock: number;
   /** Producto fabricado bajo pedido: no limita la disponibilidad del combo. */
   madeToOrder?: boolean;
+  /** Horas de fabricación del producto bajo pedido (intProductionLeadHours). */
+  leadHours?: number;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -52,6 +54,18 @@ export function virtualAvailability(components: ComponentFacts[]): number | null
     min = min === null ? units : Math.min(min, units);
   }
   return min;
+}
+
+/**
+ * Un kit armado se puede pedir sin unidades armadas ("bajo pedido") cuando
+ * TODOS sus componentes son productos bajo pedido: se fabrican y luego se
+ * arma. Si alguno no lo es, el kit sigue limitado a sus unidades armadas.
+ * El tiempo es el del componente más lento.
+ */
+export function kitMadeToOrder(components: Pick<ComponentFacts, 'madeToOrder' | 'leadHours'>[]): { madeToOrder: boolean; leadHours: number } {
+  const madeToOrder = components.length > 0 && components.every((c) => !!c.madeToOrder);
+  const leadHours = madeToOrder ? Math.max(0, ...components.map((c) => Number(c.leadHours) || 0)) : 0;
+  return { madeToOrder, leadHours };
 }
 
 /**

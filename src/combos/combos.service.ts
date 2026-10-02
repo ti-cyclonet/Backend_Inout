@@ -6,7 +6,7 @@ import { ComboComponent } from './entities/combo-component.entity';
 import { ComboAssembly } from './entities/combo-assembly.entity';
 import { AssembleKitDto, ComboComponentDto, CreateComboDto, UpdateComboDto } from './dto/combo.dto';
 import { assertComponentsDefinition, assertSellableComponents, COMPONENT_TABLES, LoadedComponent, loadComponents } from './combo-components';
-import { componentsCost, listPriceTotal, stockQuantityPerCombo, virtualAvailability, weightedCost } from './combo-math';
+import { kitMadeToOrder, componentsCost, listPriceTotal, stockQuantityPerCombo, virtualAvailability, weightedCost } from './combo-math';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { logoVariant } from '../tenant-branding/logo-url';
@@ -67,6 +67,8 @@ export class CombosService {
           listPrice: d.listPrice,
           savings: d.savings,
           available: d.available,
+          madeToOrder: d.madeToOrder,
+          productionLeadHours: d.productionLeadHours,
           components: d.components.map((c) => ({ name: c.name, quantity: c.quantity, quantityMode: c.quantityMode })),
         });
       } catch {
@@ -166,6 +168,8 @@ export class CombosService {
       : virtualAvailability(facts);
     // Cuántos kits se podrían armar con el stock actual de componentes
     const assemblable = isKit ? virtualAvailability(facts.map((f) => ({ ...f, madeToOrder: false }))) : null;
+    // Kit con todos sus componentes bajo pedido: se puede pedir sin armados
+    const kitMto = isKit ? kitMadeToOrder(facts) : { madeToOrder: false, leadHours: 0 };
 
     return {
       strId: combo.strId,
@@ -191,6 +195,9 @@ export class CombosService {
       ingQuantity: num(combo.ingQuantity),
       ingReservedStock: num(combo.ingReservedStock),
       assemblable,
+      /** KIT: se puede pedir aunque no haya armados (componentes bajo pedido). */
+      madeToOrder: kitMto.madeToOrder,
+      productionLeadHours: kitMto.leadHours,
       components: loaded.map((l) => ({
         strId: l.component.strId,
         itemType: l.facts.itemType,
