@@ -11,6 +11,7 @@ import { OrdersService } from './orders.service';
 import { resolvePaymentOptions } from './payment-plans';
 import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
 import { logoVariant } from '../tenant-branding/logo-url';
+import { resolveThanksMessages } from './thanks-messages';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
@@ -184,6 +185,8 @@ export class OrderPaymentsService {
     const payments = await this.paymentRepository.find({ where: { orderId: order.id }, order: { createdAt: 'DESC' } });
     const config = await this.marketplaceConfigService.getConfig(order.tenantId);
     const delivery = await this.ordersService.estimateDelivery(order).catch(() => null);
+    const thanksMessages = resolveThanksMessages(config?.thanksMessages);
+    const delivered = order.status === OrderStatus.DELIVERED || order.status === OrderStatus.INVOICED;
     return {
       tenantId: order.tenantId,
       /** Entrega estimada (en vivo): franja programada o cálculo por etapa/cola. */
@@ -226,7 +229,10 @@ export class OrderPaymentsService {
       /** Datos de pago de la tienda (cuentas, Nequi…) para consignar. */
       paymentInstructions: resolvePaymentOptions(config?.paymentOptions).instructions,
       /** Pedido entregado: datos para la ventana de agradecimiento al cliente. */
-      thanks: order.status === OrderStatus.DELIVERED || order.status === OrderStatus.INVOICED ? { ...(await this.thanksFor(order)), brandColor: config?.brandColor || null } : null,
+      // Agradecimiento al entregar (la tienda puede apagarlo o cambiar sus textos)
+      thanks: delivered && thanksMessages.enabled
+        ? { ...(await this.thanksFor(order)), brandColor: config?.brandColor || null, messages: thanksMessages }
+        : null,
       payments: payments.map((p) => ({
         amount: Number(p.amount),
         method: p.method,
