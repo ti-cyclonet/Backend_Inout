@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { applyStockDelta, assertStockAvailable, resolveStockLines, ResolvedStockLine, StockLine } from './stock-availability';
+import { ComboComponent } from '../combos/entities/combo-component.entity';
+import { loadComponents } from '../combos/combo-components';
+import { kitMadeToOrder } from '../combos/combo-math';
 
 /**
  * Stock de pedidos con FABRICACIÓN BAJO PEDIDO.
@@ -10,6 +13,10 @@ import { applyStockDelta, assertStockAvailable, resolveStockLines, ResolvedStock
  * fabrica con un lote normal (products/production, que suma al stock) y, al
  * pasar el pedido a READY, se reserva el resto. Materiales de reventa y
  * productos sin la marca siguen exigiendo stock completo, como antes.
+ *
+ * Un KIT armado cuyos componentes son TODOS productos bajo pedido también se
+ * puede pedir sin armados: el faltante queda por fabricar (se producen los
+ * componentes y se arma el kit antes de pasarlo a Listo).
  *
  * Cada línea guarda `reservedQuantity` y `toManufacture` (en la misma unidad
  * en que se vende). Pedidos anteriores no traen esos campos: se consideran
@@ -35,6 +42,27 @@ export interface ReservationResult<T extends OrderStockItem> {
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
+
+/** ¿La línea se puede fabricar si falta stock? Y en cuántas horas. */
+async function madeToOrderOf(
+  manager: EntityManager,
+  tenantId: string,
+  line: ResolvedStockLine,
+  kitCache: Map<string, { madeToOrder: boolean; leadHours: number }>,
+): Promise<{ madeToOrder: boolean; leadHours: number }> {
+  if (line.itemType === 'product') {
+    return { madeToOrder: !!line.entity.blnMadeToOrder, leadHours: Number(line.entity.intProductionLeadHours) || 0 };
+  }
+  if (line.itemType !== 'kit') return { madeToOrder: false, leadHours: 0 };
+  let kit = kitCache.get(line.id);
+  if (!kit) {
+    const components = await manager.find(ComboComponent, { where: { strComboId: line.id } });
+    const loaded = await loadComponents(manager, tenantId, components).catch(() => []);
+    kit = kitMadeToOrder(loaded.map((l) => l.facts));
+    kitCache.set(line.id, kit);
+  }
+  return kit;
+}
 
 /** Cantidad reservada de una línea (compatibilidad: sin el campo = todo reservado). */
 export function reservedOf(item: OrderStockItem): number {
@@ -77,6 +105,7 @@ export async function reserveOrderStock<T extends OrderStockItem>(
 
   const shortages: string[] = [];
   const toReserve: ResolvedStockLine[] = [];
+  const kitCache = new Map<string, { madeToOrder: boolean; leadHours: number }>();
   let hasMadeToOrder = false;
   let maxLeadHours = 0;
 
@@ -93,14 +122,14 @@ export async function reserveOrderStock<T extends OrderStockItem>(
 
     let reserved = line.quantity;
     if (availUnits < line.quantity) {
-      const madeToOrder = line.itemType === 'product' && !!line.entity.blnMadeToOrder;
-      if (!madeToOrder) {
+      const mto = await madeToOrderOf(manager, tenantId, line, kitCache);
+      if (!mto.madeToOrder) {
         shortages.push(`"${line.name}" (disponible: ${Math.floor(availUnits)}, solicitado: ${line.quantity})`);
         continue;
       }
       reserved = round(Math.max(0, availUnits));
       hasMadeToOrder = true;
-      maxLeadHours = Math.max(maxLeadHours, Number(line.entity.intProductionLeadHours) || 0);
+      maxLeadHours = Math.max(maxLeadHours, mto.leadHours);
     }
 
     item.reservedQuantity = reserved;
@@ -129,15 +158,19 @@ export async function previewOrderStock(
 ): Promise<{ hasMadeToOrder: boolean; maxLeadHours: number }> {
   const resolved = await resolveStockLines(manager, tenantId, items, { skipMissing: true });
   const used = new Map<string, number>();
+  const kitCache = new Map<string, { madeToOrder: boolean; leadHours: number }>();
   let hasMadeToOrder = false;
   let maxLeadHours = 0;
   for (const line of resolved) {
     const key = `${line.itemType}:${line.id}`;
     const available = Number(line.entity.ingQuantity || 0) - Number(line.entity.ingReservedStock || 0) - (used.get(key) || 0);
     used.set(key, (used.get(key) || 0) + line.baseQuantity);
-    if (available < line.baseQuantity && line.itemType === 'product' && line.entity.blnMadeToOrder) {
-      hasMadeToOrder = true;
-      maxLeadHours = Math.max(maxLeadHours, Number(line.entity.intProductionLeadHours) || 0);
+    if (available < line.baseQuantity) {
+      const mto = await madeToOrderOf(manager, tenantId, line, kitCache);
+      if (mto.madeToOrder) {
+        hasMadeToOrder = true;
+        maxLeadHours = Math.max(maxLeadHours, mto.leadHours);
+      }
     }
   }
   return { hasMadeToOrder, maxLeadHours };
@@ -163,7 +196,7 @@ export async function reserveManufactured<T extends OrderStockItem>(
   } catch (err) {
     if (err instanceof BadRequestException) {
       throw new BadRequestException(
-        `Faltan unidades por fabricar para marcar el pedido como listo. ${(err as Error).message}. Registra la producción primero.`,
+        `Faltan unidades por fabricar para marcar el pedido como listo. ${(err as Error).message}. Registra la producción primero (y, si es un kit, ármalo en Combos y kits).`,
       );
     }
     throw err;

@@ -20,6 +20,8 @@ import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 import { areUnitsCompatible } from 'src/common/utils/unit-conversion';
 import { assertResaleConfig } from '../common/resale';
+import { OpeningBalanceService } from '../inventory-movements/opening-balance.service';
+import { openingFromMaterialRow } from '../inventory-movements/opening-balance';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -39,6 +41,9 @@ export class MaterialsService {
     private readonly dataSource: DataSource,
 
     private readonly cloudinaryService: CloudinaryService,
+
+    /** Saldo inicial opcional de la carga masiva (columnas Stock inicial / Costo unitario). */
+    private readonly openingBalance: OpeningBalanceService,
 
     private readonly limitEnforcementService: LimitEnforcementService,
   ) {}
@@ -506,7 +511,7 @@ export class MaterialsService {
       }
       // === FIN VALIDACIÓN DE LÍMITE ===
 
-      const results = { success: 0, errors: [] };
+      const results = { success: 0, openingApplied: 0, errors: [] };
 
       for (const row of data) {
         try {
@@ -581,8 +586,24 @@ export class MaterialsService {
             blnBulkUpload: true
           };
 
-          await this.create(materialDto, tenantId, false);
+          // Saldo inicial opcional: se valida antes de crear para no dejar el
+          // material a medias (creado pero sin las existencias que el cliente indicó)
+          const opening = openingFromMaterialRow(row as Record<string, unknown>);
+          if (opening?.error) {
+            results.errors.push({ row: materialName, error: opening.error });
+            continue;
+          }
+
+          const created: any = await this.create(materialDto, tenantId, false);
           results.success++;
+
+          if (opening && created?.strId) {
+            const r = await this.openingBalance.register(tenantId, [
+              { type: 'material', id: created.strId, quantity: opening.quantity, unitCost: opening.unitCost },
+            ]);
+            if (r.applied) results.openingApplied++;
+            else results.errors.push({ row: materialName, error: `Material creado, pero sin saldo inicial: ${r.results[0]?.error || 'error desconocido'}. Regístralo desde el Kardex.` });
+          }
         } catch (error) {
           results.errors.push({ row: row['Nombre*'], error: error.message });
         }
@@ -607,8 +628,10 @@ export class MaterialsService {
       });
 
       return {
-        message: `Carga completada: ${results.success} materiales creados`,
+        message: `Carga completada: ${results.success} materiales creados`
+          + (results.openingApplied ? ` (${results.openingApplied} con saldo inicial)` : ''),
         success: results.success,
+        openingApplied: results.openingApplied,
         errors: results.errors
       };
     } catch (error) {
@@ -769,6 +792,9 @@ export class MaterialsService {
         if (rawLoc && !validLocationCodes.has(rawLoc)) {
           rowErrors.push(`Ubicación "${row['Ubicación']}" no existe (usa el código de una ubicación registrada)`);
         }
+
+        const opening = openingFromMaterialRow(row);
+        if (opening?.error) rowErrors.push(opening.error);
 
         if (rowErrors.length > 0) {
           errors.push({ row: i + 2, name: row['Nombre*'] || 'Sin nombre', errors: rowErrors });

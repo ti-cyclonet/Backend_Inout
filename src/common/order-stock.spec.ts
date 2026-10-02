@@ -90,3 +90,32 @@ describe('reserveManufactured', () => {
       .rejects.toThrow(/Registra la producción/);
   });
 });
+
+describe('reserveOrderStock · kits armados bajo pedido', () => {
+  /** Kit sin armados + sus componentes (productos) en el mismo mapa; find() devuelve los componentes. */
+  function kitManager(components: { id: string; mto: boolean; lead?: number }[]) {
+    const rows: Record<string, any> = {
+      k1: { strId: 'k1', strName: 'Uniforme completo', strType: 'KIT', strStatus: 'active', ingQuantity: 0, ingReservedStock: 0 },
+    };
+    for (const c of components) {
+      rows[c.id] = { strId: c.id, strName: c.id, ingQuantity: 0, ingReservedStock: 0, fltPrice: 10, fltCost: 5, blnMadeToOrder: c.mto, intProductionLeadHours: c.lead || 0 };
+    }
+    const { manager, updates } = fakeManager(rows);
+    manager.find = async () => components.map((c) => ({ strComboId: 'k1', strItemType: 'product', strItemId: c.id, fltQuantity: 1, strQuantityMode: 'SALE' }));
+    return { manager, updates };
+  }
+
+  it('todos los componentes bajo pedido: el kit se puede pedir y queda por fabricar', async () => {
+    const { manager, updates } = kitManager([{ id: 'blusa', mto: true, lead: 72 }, { id: 'falda', mto: true, lead: 48 }]);
+    const r = await reserveOrderStock(manager, 't1', [item('k1', 2, { itemType: 'kit' })]);
+    expect(r.items[0]).toMatchObject({ reservedQuantity: 0, toManufacture: 2 });
+    expect(r.hasMadeToOrder).toBe(true);
+    expect(r.maxLeadHours).toBe(72);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('si algún componente no es bajo pedido, el kit sigue exigiendo armados', async () => {
+    const { manager } = kitManager([{ id: 'blusa', mto: true }, { id: 'medias', mto: false }]);
+    await expect(reserveOrderStock(manager, 't1', [item('k1', 1, { itemType: 'kit' })])).rejects.toThrow(/Stock insuficiente/);
+  });
+});

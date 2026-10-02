@@ -9,6 +9,7 @@ import { Material } from './entities/material.entity';
 import { MaterialImage } from './entities/material-image.entity';
 import { Activity } from './entities/activity.entity';
 import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
+import { InventoryMovementsModule } from '../inventory-movements/inventory-movements.module';
 import { UsageCountersModule } from 'src/usage-counters/usage-counters.module';
 
 @Module({
@@ -21,6 +22,8 @@ import { UsageCountersModule } from 'src/usage-counters/usage-counters.module';
       storage: memoryStorage()
     }),
     UsageCountersModule,
+    // Saldo inicial opcional en la carga masiva
+    InventoryMovementsModule,
   ],
   exports: [MaterialsService],
 })
