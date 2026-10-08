@@ -10,7 +10,7 @@ import { Product } from '../products/entities/product.entity';
 import { Material } from '../materials/entities/material.entity';
 import { PurchaseRecord } from '../purchases/entities/purchase-record.entity';
 
-import { BOGOTA_OFFSET_MS, DAY_MS, bogotaDayStart, bogotaMonthStart, dayKey, num } from './panel-utils';
+import { BOGOTA_OFFSET_MS, DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, num, saleAt, salesSinceParams } from './panel-utils';
 
 /** Pedidos en curso (ni borrador ni cerrados). */
 export const ACTIVE_ORDER = [OrderStatus.CONFIRMED, OrderStatus.IN_PRODUCTION, OrderStatus.READY, OrderStatus.OUT_FOR_DELIVERY];
@@ -54,7 +54,7 @@ export class DashboardService {
     const [sales, soldOrders, activeOrders, pendingPayments, openReceivables, clientList, _unused, products, materials, expiring] = await Promise.all([
       this.sales.createQueryBuilder('s')
         .where('s.strTenantId = :t', { t: tenantId })
-        .andWhere('s.dtmCreationDate >= :from', { from: sixMonthsStart })
+        .andWhere(SALES_SINCE_SQL, salesSinceParams(sixMonthsStart))
         .getMany(),
       this.orders.createQueryBuilder('o')
         .where('o.tenantId = :t', { t: tenantId })
@@ -80,7 +80,7 @@ export class DashboardService {
     // ─── Ventas: directas + pedidos vendidos ───
     type Tx = { at: Date; total: number; kind: 'sale' | 'order'; code: string; customer: string; items: any[] };
     const txs: Tx[] = [
-      ...sales.map((s) => ({ at: s.dtmCreationDate, total: saleTotal(s), kind: 'sale' as const, code: s.strInvoiceCode, customer: s.customerName, items: Array.isArray(s.items) ? s.items : [] })),
+      ...sales.map((s) => ({ at: saleAt(s), total: saleTotal(s), kind: 'sale' as const, code: s.strInvoiceCode, customer: s.customerName, items: Array.isArray(s.items) ? s.items : [] })),
       ...soldOrders.map((o) => ({ at: orderSoldAt(o), total: num(o.total), kind: 'order' as const, code: o.orderCode, customer: (o.customerName || '').split(' | ')[0], items: Array.isArray(o.items) ? o.items : [] })),
     ].filter((t) => t.at);
 
