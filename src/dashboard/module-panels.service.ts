@@ -11,7 +11,7 @@ import { Sale } from '../sales/entities/sale.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CustomersService } from '../customers/customers.service';
 import { Receivable, ReceivableStatus } from '../credit/entities/receivable.entity';
-import { DAY_MS, bogotaDayStart, bogotaMonthStart, dayKey, num } from './panel-utils';
+import { DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, num, saleAt, salesSinceParams } from './panel-utils';
 import { ACTIVE_ORDER, SOLD_ORDER, orderSoldAt, saleTotal } from './dashboard.service';
 
 const available = (qty: any, reserved: any) => num(qty) - num(reserved);
@@ -54,14 +54,14 @@ export class ModulePanelsService {
   /** Ventas directas + pedidos vendidos desde `from`. */
   private async soldSince(tenantId: string, from: Date) {
     const [sales, orders] = await Promise.all([
-      this.sales.createQueryBuilder('s').where('s.strTenantId = :t AND s.dtmCreationDate >= :from', { t: tenantId, from }).getMany(),
+      this.sales.createQueryBuilder('s').where('s.strTenantId = :t', { t: tenantId }).andWhere(SALES_SINCE_SQL, salesSinceParams(from)).getMany(),
       this.orders.createQueryBuilder('o').where('o.tenantId = :t', { t: tenantId })
         .andWhere('o.status IN (:...st)', { st: SOLD_ORDER })
         .andWhere('COALESCE(o.invoicedAt, o.updatedAt) >= :from', { from }).getMany(),
     ]);
     return [
       ...sales.map((s) => ({
-        at: s.dtmCreationDate, total: saleTotal(s), customerId: s.strCustomerId || null, customerName: s.customerName || '',
+        at: saleAt(s), total: saleTotal(s), customerId: s.strCustomerId || null, customerName: s.customerName || '',
         paymentType: (s.paymentType || 'CONTADO').toUpperCase(), paymentMethod: (s.paymentMethod || '').toUpperCase(),
         channel: 'Venta directa', lines: soldLines(s.items, { productId: s.strProductId, quantity: s.fltQuantity, total: saleTotal(s) }),
       })),
