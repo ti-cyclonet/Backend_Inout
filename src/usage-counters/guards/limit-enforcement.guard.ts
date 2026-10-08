@@ -39,6 +39,9 @@ export class LimitEnforcementGuard implements CanActivate {
       variableName,
     );
 
+    // El cupo se reserva antes de validar el cuerpo y de ejecutar la
+    // operación: si esta falla, LimitRollbackInterceptor lo devuelve.
+    request.limitReservation = { tenantId, variableName };
     return true;
   }
 }
