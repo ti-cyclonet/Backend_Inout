@@ -65,6 +65,7 @@ import { Promotion } from './promotions/entities/promotion.entity';
 import { Combo } from './combos/entities/combo.entity';
 import { ComboComponent } from './combos/entities/combo-component.entity';
 import { ComboAssembly } from './combos/entities/combo-assembly.entity';
+import { MarketplaceItemStat } from './marketplace-config/entities/marketplace-item-stat.entity';
 
 @Module({
   imports: [
@@ -79,7 +80,7 @@ import { ComboAssembly } from './combos/entities/combo-assembly.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
