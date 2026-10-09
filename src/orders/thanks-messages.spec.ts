@@ -13,6 +13,13 @@ describe('resolveThanksMessages', () => {
     expect((r as any).extra).toBeUndefined();
   });
 
+  it('guarda el estilo de la tarjeta; uno desconocido vuelve al clásico', () => {
+    expect(resolveThanksMessages({ style: 'postal' }).style).toBe('postal');
+    expect(resolveThanksMessages({ style: 'nocturno' }).style).toBe('nocturno');
+    expect(resolveThanksMessages({ style: 'neón' }).style).toBe('clasico');
+    expect(resolveThanksMessages({}).style).toBe('clasico');
+  });
+
   it('se puede apagar', () => {
     expect(resolveThanksMessages({ enabled: false }).enabled).toBe(false);
   });
