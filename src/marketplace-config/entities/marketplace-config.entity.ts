@@ -47,6 +47,10 @@ export class MarketplaceConfig {
   @Column({ type: 'json', nullable: true })
   thanksMessages: Record<string, any> | null;
 
+  /** Información de la carta: bloques (proteínas, salsas…), subtítulo, zonas de domicilio, solo domicilios. */
+  @Column({ type: 'json', nullable: true })
+  menuExtras: Record<string, any> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

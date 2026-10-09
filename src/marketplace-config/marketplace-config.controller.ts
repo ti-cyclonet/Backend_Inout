@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException, BadRequestException, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException, BadRequestException, HttpCode, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MarketplaceStatsService } from './marketplace-stats.service';
 import { MarketplaceConfigService } from './marketplace-config.service';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
@@ -8,6 +9,7 @@ import { resolveScheduling } from '../orders/scheduling';
 import { resolveThanksMessages } from '../orders/thanks-messages';
 import { BusinessParamsService } from '../config/business-params.service';
 import { storeInfoFrom, validateStoreInfo } from './store-info';
+import { MENU_EXTRA_IMAGE_MAX_BYTES, resolveMenuExtras } from './menu-extras';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -125,6 +127,34 @@ export class MarketplaceConfigController {
     const result = validateStoreInfo(body);
     if ('error' in result) throw new BadRequestException(result.error);
     return this.marketplaceConfigService.updateStoreInfo(tenantId, result.value);
+  }
+
+  /** Información de la carta (público: la muestran la carta y la tienda). */
+  @Get(':tenantId/menu-extras')
+  async getMenuExtras(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return resolveMenuExtras(config?.menuExtras);
+  }
+
+  @Patch(':tenantId/menu-extras')
+  @UseGuards(JwtAuthGuard)
+  async updateMenuExtras(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.updateMenuExtras(tenantId, resolveMenuExtras(body));
+  }
+
+  /** Foto de un renglón de la carta (campo 'image'). Devuelve { imageUrl, imagePublicId }. */
+  @Post(':tenantId/menu-extras/image')
+  @UseGuards(JwtAuthGuard)
+  // Margen sobre el máximo para que el servicio devuelva el mensaje claro
+  @UseInterceptors(FileInterceptor('image', { limits: { fileSize: MENU_EXTRA_IMAGE_MAX_BYTES + 1024 * 1024 } }))
+  async uploadMenuExtraImage(@Param('tenantId') tenantId: string, @UploadedFile() file: Express.Multer.File, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.uploadMenuExtraImage(tenantId, file);
   }
 
   /** Textos de la modal de agradecimiento al entregar el pedido. */
