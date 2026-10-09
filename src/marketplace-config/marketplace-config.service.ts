@@ -1,15 +1,18 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MarketplaceConfig } from './entities/marketplace-config.entity';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
 import { StoreInfo, storeInfoFrom } from './store-info';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { MENU_EXTRA_IMAGE_MAX_BYTES, MENU_EXTRA_IMAGE_TYPES, MenuExtras, removedImagePublicIds, resolveMenuExtras } from './menu-extras';
 
 @Injectable()
 export class MarketplaceConfigService {
   constructor(
     @InjectRepository(MarketplaceConfig)
     private readonly marketplaceConfigRepository: Repository<MarketplaceConfig>,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async updateConfig(dto: UpdateMarketplaceConfigDto): Promise<MarketplaceConfig> {
@@ -84,6 +87,33 @@ export class MarketplaceConfigService {
     config.welcomeMessage = info.welcomeMessage || null;
     await this.marketplaceConfigRepository.save(config);
     return storeInfoFrom(config);
+  }
+
+  /** Información de la carta (ya normalizada). Borra de Cloudinary las fotos que se quitaron. */
+  async updateMenuExtras(tenantId: string, extras: MenuExtras): Promise<MenuExtras> {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego la información de la carta.');
+    }
+    const before = resolveMenuExtras(config.menuExtras);
+    config.menuExtras = extras;
+    await this.marketplaceConfigRepository.save(config);
+    for (const id of removedImagePublicIds(before, extras)) {
+      await this.cloudinary.destroy(id).catch(() => undefined);
+    }
+    return extras;
+  }
+
+  /**
+   * Sube la foto de un renglón de la carta. Se guarda en la carta al guardar la
+   * información (PATCH menu-extras); una foto subida y no guardada queda huérfana.
+   */
+  async uploadMenuExtraImage(tenantId: string, file: Express.Multer.File): Promise<{ imageUrl: string; imagePublicId: string }> {
+    if (!file) throw new BadRequestException('Selecciona una imagen.');
+    if (!MENU_EXTRA_IMAGE_TYPES.includes(file.mimetype)) throw new BadRequestException('La imagen debe ser PNG, JPG o WebP.');
+    if (file.size > MENU_EXTRA_IMAGE_MAX_BYTES) throw new BadRequestException('La imagen no puede pesar más de 3 MB.');
+    const uploaded = await this.cloudinary.uploadImageFromBuffer(file.buffer, `inout/tenants/${tenantId}/menu`);
+    return { imageUrl: uploaded.secure_url, imagePublicId: uploaded.public_id };
   }
 
   async getConfig(tenantId: string): Promise<MarketplaceConfig | null> {
