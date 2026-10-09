@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException, HttpCode } from '@nestjs/common';
+import { MarketplaceStatsService } from './marketplace-stats.service';
 import { MarketplaceConfigService } from './marketplace-config.service';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -10,7 +11,21 @@ import { resolveThanksMessages } from '../orders/thanks-messages';
 export class MarketplaceConfigController {
   constructor(
     private readonly marketplaceConfigService: MarketplaceConfigService,
+    private readonly statsService: MarketplaceStatsService,
   ) {}
+
+  /** Público: vistas y unidades vendidas reales de cada ítem de la tienda. */
+  @Get(':tenantId/stats')
+  stats(@Param('tenantId') tenantId: string) {
+    return this.statsService.estadisticas(tenantId);
+  }
+
+  /** Público: un visitante abrió el detalle de un ítem. */
+  @Post(':tenantId/items/:itemId/view')
+  @HttpCode(204)
+  async registrarVista(@Param('tenantId') tenantId: string, @Param('itemId') itemId: string) {
+    await this.statsService.registrarVista(tenantId, itemId);
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard)
