@@ -5,9 +5,10 @@ import { MarketplaceConfigService } from './marketplace-config.service';
 import { MarketplaceConfigController } from './marketplace-config.controller';
 import { MarketplaceItemStat } from './entities/marketplace-item-stat.entity';
 import { MarketplaceStatsService } from './marketplace-stats.service';
+import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([MarketplaceConfig, MarketplaceItemStat])],
+  imports: [TypeOrmModule.forFeature([MarketplaceConfig, MarketplaceItemStat]), CloudinaryModule],
   controllers: [MarketplaceConfigController],
   providers: [MarketplaceConfigService, MarketplaceStatsService],
   exports: [MarketplaceConfigService],
