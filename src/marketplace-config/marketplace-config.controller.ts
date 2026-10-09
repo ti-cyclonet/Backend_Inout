@@ -6,13 +6,26 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { resolvePaymentOptions } from '../orders/payment-plans';
 import { resolveScheduling } from '../orders/scheduling';
 import { resolveThanksMessages } from '../orders/thanks-messages';
+import { BusinessParamsService } from '../config/business-params.service';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
   constructor(
     private readonly marketplaceConfigService: MarketplaceConfigService,
     private readonly statsService: MarketplaceStatsService,
+    private readonly businessParamsService: BusinessParamsService,
   ) {}
+
+  /**
+   * Público: nombre de la tienda para el título del navegador. Es el parámetro
+   * NEGOCIO_NOMBRE del período activo (Authoriza); null si no está configurado.
+   */
+  @Get(':tenantId/store-name')
+  async storeName(@Param('tenantId') tenantId: string) {
+    const params = await this.businessParamsService.getParams(tenantId);
+    const name = String(params['NEGOCIO_NOMBRE'] ?? '').trim();
+    return { name: name || null };
+  }
 
   /** Público: vistas y unidades vendidas reales de cada ítem de la tienda. */
   @Get(':tenantId/stats')
