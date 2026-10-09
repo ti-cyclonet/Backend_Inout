@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MarketplaceConfig } from './entities/marketplace-config.entity';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
+import { StoreInfo, storeInfoFrom } from './store-info';
 
 @Injectable()
 export class MarketplaceConfigService {
@@ -71,6 +72,18 @@ export class MarketplaceConfigService {
     config.thanksMessages = thanksMessages;
     await this.marketplaceConfigRepository.save(config);
     return thanksMessages;
+  }
+
+  /** WhatsApp y mensaje de bienvenida (ya validados). Vacío se guarda como null. */
+  async updateStoreInfo(tenantId: string, info: StoreInfo): Promise<StoreInfo> {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego los datos de la tienda.');
+    }
+    config.whatsapp = info.whatsapp || null;
+    config.welcomeMessage = info.welcomeMessage || null;
+    await this.marketplaceConfigRepository.save(config);
+    return storeInfoFrom(config);
   }
 
   async getConfig(tenantId: string): Promise<MarketplaceConfig | null> {
