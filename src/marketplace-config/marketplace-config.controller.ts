@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, NotFoundException, ForbiddenException, BadRequestException, HttpCode } from '@nestjs/common';
 import { MarketplaceStatsService } from './marketplace-stats.service';
 import { MarketplaceConfigService } from './marketplace-config.service';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
@@ -7,6 +7,7 @@ import { resolvePaymentOptions } from '../orders/payment-plans';
 import { resolveScheduling } from '../orders/scheduling';
 import { resolveThanksMessages } from '../orders/thanks-messages';
 import { BusinessParamsService } from '../config/business-params.service';
+import { storeInfoFrom, validateStoreInfo } from './store-info';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -106,6 +107,24 @@ export class MarketplaceConfigController {
       throw new ForbiddenException('No tienes permisos para modificar este marketplace');
     }
     return this.marketplaceConfigService.updateScheduling(tenantId, resolveScheduling(body));
+  }
+
+  /** WhatsApp y mensaje de bienvenida de la tienda (público: los muestra la tienda). */
+  @Get(':tenantId/store-info')
+  async getStoreInfo(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return storeInfoFrom(config);
+  }
+
+  @Patch(':tenantId/store-info')
+  @UseGuards(JwtAuthGuard)
+  async updateStoreInfo(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    const result = validateStoreInfo(body);
+    if ('error' in result) throw new BadRequestException(result.error);
+    return this.marketplaceConfigService.updateStoreInfo(tenantId, result.value);
   }
 
   /** Textos de la modal de agradecimiento al entregar el pedido. */
