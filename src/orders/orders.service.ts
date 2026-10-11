@@ -33,6 +33,7 @@ import {
 } from './order-timing';
 import { FulfillmentResult, resolveDeliveryOptions, resolveFulfillment } from './delivery-options';
 import { validateLineChoices } from '../products/product-choices';
+import { computeSaleProfit, SaleProfit } from '../common/sale-profit';
 import { resolveMenuExtras } from '../marketplace-config/menu-extras';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
@@ -874,6 +875,7 @@ export class OrdersService {
       if (Number(order.amountPaid) > 0) order.refundPending = true;
     }
 
+    let invoicedProfit: SaleProfit | null = null;
     // Facturar: forma de pago. A crédito se valida el cupo y se crea la
     // cuenta por cobrar en la misma transacción que el cambio de estado.
     if (newStatus === OrderStatus.INVOICED) {
@@ -887,6 +889,10 @@ export class OrdersService {
       order.paymentType = isCredit ? 'CREDITO' : 'CONTADO';
       order.paymentMethod = isCredit ? null : (payment.paymentMethod || 'EFECTIVO');
       order.invoicedAt = new Date();
+      // Ganancia del pedido: sin impuestos ni domicilio, con el costo actual de lo vendido
+      const costLines = await resolveStockLines(this.dataSource.manager, tenantId, order.items || [], { skipMissing: true });
+      invoicedProfit = computeSaleProfit(costLines, { total: order.total, tax: order.tax, deliveryFee: order.deliveryFee });
+      order.profit = invoicedProfit.profit;
       if (isCredit) {
         const saved = await this.dataSource.transaction(async (manager) => {
           await this.creditService.createReceivableForCreditSale(manager, tenantId, {
@@ -900,13 +906,13 @@ export class OrdersService {
           });
           return manager.save(order);
         });
-        return { message: 'Pedido facturado a crédito', order: saved };
+        return { message: 'Pedido facturado a crédito', order: saved, profit: invoicedProfit };
       }
     }
 
     const updatedOrder = await this.orderRepository.save(order);
 
-    return { message: 'Estado actualizado exitosamente', order: updatedOrder };
+    return { message: 'Estado actualizado exitosamente', order: updatedOrder, ...(invoicedProfit ? { profit: invoicedProfit } : {}) };
   }
 
   async update(id: string, tenantId: string, updateDto: Partial<CreateOrderDto>) {

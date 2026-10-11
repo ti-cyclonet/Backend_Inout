@@ -13,6 +13,7 @@ import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
+import { computeSaleProfit } from '../common/sale-profit';
 
 @Injectable()
 export class SalesService {
@@ -161,6 +162,8 @@ export class SalesService {
       }
 
       const invoiceCode = await this.generateInvoiceCode(tenantId);
+      // Ganancia de la venta (con el costo de lo vendido en este momento)
+      const profit = computeSaleProfit(resolved, { total, tax });
 
       const sale = this.saleRepository.create({
         strTenantId: tenantId,
@@ -178,6 +181,7 @@ export class SalesService {
         total: total,
         paymentType: createDto.paymentType === 'CREDITO' ? 'CREDITO' : 'CONTADO',
         paymentMethod: createDto.paymentType === 'CREDITO' ? null : (createDto.paymentMethod || 'EFECTIVO'),
+        profit: profit.profit,
       });
       const savedSale = await queryRunner.manager.save(sale);
 
@@ -225,6 +229,7 @@ export class SalesService {
         message: 'Venta registrada exitosamente',
         sale: savedSale,
         receivable,
+        profit,
         appliedParams: {
           ivaPercent: params.IVA_PORCENTAJE,
           taxApplied: tax || 0,
