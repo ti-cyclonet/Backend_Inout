@@ -818,8 +818,13 @@ export class ProductsService {
     };
   }
 
+  /** Líneas de receta (materiales) de los productos del tenant. Antes devolvía las de todos los tenants. */
   async getCompositionTwo(tenantId: string) {
-    return this.compositionTwoRepository.find();
+    return this.compositionTwoRepository
+      .createQueryBuilder('c')
+      .innerJoin(Product, 'p', 'p.strId = c.strProductId')
+      .where('p.strTenantId = :tenantId', { tenantId })
+      .getMany();
   }
 
   async getCompositionTwoByProduct(productId: string) {
@@ -828,8 +833,13 @@ export class ProductsService {
     });
   }
 
+  /** Líneas de receta (materiales compuestos) de los productos del tenant. */
   async getCompositionThree(tenantId: string) {
-    return this.compositionThreeRepository.find();
+    return this.compositionThreeRepository
+      .createQueryBuilder('c')
+      .innerJoin(Product, 'p', 'p.strId = c.strProductId')
+      .where('p.strTenantId = :tenantId', { tenantId })
+      .getMany();
   }
 
   async getCompositionThreeByProduct(productId: string) {
