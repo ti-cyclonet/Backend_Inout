@@ -86,4 +86,9 @@ export class CreateProductDto {
   @IsNumber()
   @IsOptional()
   intProductionLeadHours?: number;
+
+  /** Listas de la carta de las que el cliente escoge (se normaliza en el servicio). */
+  @IsArray()
+  @IsOptional()
+  jsonChoiceGroups?: { block: string; min: number; max: number }[];
 }

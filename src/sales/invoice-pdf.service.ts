@@ -131,6 +131,7 @@ export class InvoicePdfService {
         unitPrice: l.unitPrice,
         total: l.total,
         components: l.components,
+        options: l.options,
       }));
     } catch {
       return [];
@@ -184,8 +185,14 @@ export class InvoicePdfService {
       ],
       ...items.map((item, idx) => [
         { text: (idx + 1).toString(), alignment: 'center' as const },
-        item.components?.length
-          ? { stack: [item.product || item.productName || 'Producto', { text: `Incluye: ${item.components.join(', ')}`, fontSize: 8, color: '#666' }] }
+        item.components?.length || item.options?.length
+          ? {
+              stack: [
+                item.product || item.productName || 'Producto',
+                ...(item.components?.length ? [{ text: `Incluye: ${item.components.join(', ')}`, fontSize: 8, color: '#666' }] : []),
+                ...(item.options || []).map((o: string) => ({ text: o, fontSize: 8, color: '#666' })),
+              ],
+            }
           : { text: item.product || item.productName || 'Producto' },
         { text: (item.quantity || 0).toString(), alignment: 'center' as const },
         { text: this.formatCurrency(parseFloat(item.unitPrice?.toString() || '0')), alignment: 'right' as const },

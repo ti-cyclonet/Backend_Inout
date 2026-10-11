@@ -32,6 +32,8 @@ import {
   stageDueAt,
 } from './order-timing';
 import { FulfillmentResult, resolveDeliveryOptions, resolveFulfillment } from './delivery-options';
+import { validateLineChoices } from '../products/product-choices';
+import { resolveMenuExtras } from '../marketplace-config/menu-extras';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
 export interface ConsentMeta {
@@ -67,6 +69,40 @@ export class OrdersService {
     createDto.subtotal = priced.subtotal;
     createDto.tax = 0;
     createDto.total = priced.subtotal;
+    await this.applyLineChoices(createDto);
+  }
+
+  /**
+   * Productos "para armar": valida lo que escogió el cliente contra los grupos
+   * del producto y las listas vigentes de la carta, y deja en la línea los
+   * nombres de la carta. En productos sin opciones se descarta lo enviado.
+   */
+  private async applyLineChoices(createDto: CreateMarketplaceOrderDto): Promise<void> {
+    const lines = (createDto.items || []).filter((l: any) => l?.productId && (l.itemType || 'product') === 'product');
+    if (!lines.length) return;
+    const ids = [...new Set(lines.map((l) => l.productId))];
+    let products: Product[] = [];
+    try {
+      products = await this.productRepository.find({
+        where: { strId: In(ids), strTenantId: createDto.tenantId },
+        select: ['strId', 'strName', 'jsonChoiceGroups'],
+      });
+    } catch {
+      products = []; // id con formato inválido: lo reporta el flujo de stock
+    }
+    const byId = new Map(products.map((p) => [p.strId, p]));
+    const needsMenu = products.some((p) => p.jsonChoiceGroups?.length);
+    const blocks = needsMenu
+      ? resolveMenuExtras((await this.marketplaceConfigService.getConfig(createDto.tenantId))?.menuExtras).blocks
+      : [];
+    for (const line of lines as any[]) {
+      const product = byId.get(line.productId);
+      const choices = product?.jsonChoiceGroups?.length
+        ? validateLineChoices(product.strName, product.jsonChoiceGroups, blocks, line.choices)
+        : [];
+      if (choices.length) line.choices = choices;
+      else delete line.choices;
+    }
   }
 
   /**
