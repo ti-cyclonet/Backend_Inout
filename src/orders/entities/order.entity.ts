@@ -169,6 +169,14 @@ export class Order {
     userAgent: string | null;
   } | null;
 
+  /** 'DELIVERY' (a domicilio) | 'PICKUP' (recoge en el local); null en pedidos anteriores a esta opción. */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  fulfillment: string | null;
+
+  /** Valor del domicilio cobrado al cliente (incluido en total). Es el presupuesto del domicilio en Shotra. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  deliveryFee: number;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal: number;
 

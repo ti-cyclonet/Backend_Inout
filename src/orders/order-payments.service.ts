@@ -12,6 +12,7 @@ import { resolvePaymentOptions } from './payment-plans';
 import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
 import { logoVariant } from '../tenant-branding/logo-url';
 import { resolveThanksMessages } from './thanks-messages';
+import { resolveDeliveryOptions } from './delivery-options';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
@@ -216,6 +217,11 @@ export class OrderPaymentsService {
         ...(i.promotion ? { promotion: { name: i.promotion.name } } : {}),
       })),
       total: Number(order.total),
+      /** Entrega: a domicilio (con su valor) o recoger en el local (con su dirección). */
+      fulfillment: order.fulfillment || null,
+      deliveryFee: Number(order.deliveryFee) || 0,
+      pickupAddress: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupAddress || null : null,
+      pickupNotes: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupNotes || null : null,
       paymentPlan: order.paymentPlan,
       paymentStatus: order.paymentStatus,
       depositRequired: Number(order.depositRequired),
