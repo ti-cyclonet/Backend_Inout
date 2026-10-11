@@ -2,6 +2,16 @@ import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, Is
 import { Type } from 'class-transformer';
 import { PAYMENT_PLANS } from '../payment-plans';
 
+/** Opciones escogidas de una lista de la carta (producto "para armar"). */
+export class OrderLineChoiceDto {
+  @IsString()
+  group: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  options: string[];
+}
+
 export class MarketplaceOrderItemDto {
   @IsString()
   @IsNotEmpty()
@@ -25,6 +35,13 @@ export class MarketplaceOrderItemDto {
   @IsOptional()
   @IsIn(['product', 'material', 'material_t', 'kit', 'combo'])
   itemType?: string;
+
+  /** Producto "para armar": lo que escogió el cliente (lo valida el servidor). */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderLineChoiceDto)
+  choices?: OrderLineChoiceDto[];
 }
 
 /** Franjas disponibles de un día para lo que hay en el carrito. */

@@ -202,6 +202,7 @@ export class OrderPaymentsService {
       items: (order.items || []).map((i: any) => ({
         productName: i.productName,
         quantity: i.quantity,
+        ...(Array.isArray(i.choices) && i.choices.length ? { choices: i.choices } : {}),
         subtotal: i.subtotal,
         toManufacture: toManufactureOf(i as any),
         // Solo lo necesario para mostrar el combo agrupado y la promoción
