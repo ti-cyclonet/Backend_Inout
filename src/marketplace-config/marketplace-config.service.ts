@@ -56,6 +56,17 @@ export class MarketplaceConfigService {
   }
 
   /** Guarda la programación de pedidos (ya normalizada con resolveScheduling). */
+  /** Formas de entrega (ya validadas con validateDeliveryOptions). */
+  async updateDeliveryOptions(tenantId: string, options: Record<string, any>) {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego sus formas de entrega.');
+    }
+    config.deliveryOptions = options;
+    await this.marketplaceConfigRepository.save(config);
+    return options;
+  }
+
   async updateScheduling(tenantId: string, scheduling: Record<string, any>) {
     const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
     if (!config) {
