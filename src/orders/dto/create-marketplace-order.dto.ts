@@ -122,6 +122,11 @@ export class CreateMarketplaceOrderDto {
   @IsIn(PAYMENT_PLANS as unknown as string[])
   paymentPlan?: string;
 
+  /** A domicilio (exige dirección y suma el valor del domicilio) o recoger en el local. */
+  @IsOptional()
+  @IsIn(['DELIVERY', 'PICKUP'])
+  fulfillment?: 'DELIVERY' | 'PICKUP';
+
   /** Ubicación exacta de entrega capturada con el GPS del comprador (opcional). */
   @IsOptional()
   @IsNumber()

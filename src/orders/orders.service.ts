@@ -31,6 +31,7 @@ import {
   resolveTimingSettings,
   stageDueAt,
 } from './order-timing';
+import { FulfillmentResult, resolveDeliveryOptions, resolveFulfillment } from './delivery-options';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
 export interface ConsentMeta {
@@ -66,6 +67,18 @@ export class OrdersService {
     createDto.subtotal = priced.subtotal;
     createDto.tax = 0;
     createDto.total = priced.subtotal;
+  }
+
+  /**
+   * Entrega del pedido (a domicilio o recoger): valida la modalidad contra la
+   * tienda y suma el valor del domicilio al total. Va justo después del precio
+   * del servidor y antes del cupo de crédito y del plan de pago, que usan el total.
+   */
+  private async resolveOrderDelivery(createDto: CreateMarketplaceOrderDto): Promise<FulfillmentResult> {
+    const config = createDto.fulfillment ? await this.marketplaceConfigService.getConfig(createDto.tenantId) : null;
+    const delivery = resolveFulfillment(createDto.fulfillment, createDto.customerAddress, resolveDeliveryOptions(config?.deliveryOptions));
+    if (delivery.deliveryFee > 0) createDto.total = (Number(createDto.total) || 0) + delivery.deliveryFee;
+    return delivery;
   }
 
   // ─── Tiempos por etapa y cola ───
@@ -399,10 +412,11 @@ export class OrdersService {
    * no bloquea el pedido si esa llamada falla). */
   async createFromMarketplace(createDto: CreateMarketplaceOrderDto, meta: ConsentMeta = {}) {
     await this.priceMarketplaceOrder(createDto);
+    const delivery = await this.resolveOrderDelivery(createDto);
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: null,
-      customerName: `${createDto.customerName} | ${createDto.customerPhone}${createDto.customerAddress ? ' | ' + createDto.customerAddress : ''}`,
-    }, meta);
+      customerName: `${createDto.customerName} | ${createDto.customerPhone}${delivery.address ? ' | ' + delivery.address : ''}`,
+    }, meta, delivery);
 
     // Todo invitado queda como CLIENTE POTENCIAL en Authoriza (potential_users),
     // con o sin correo, para poder invitarlo luego a usar la aplicación.
@@ -421,8 +435,9 @@ export class OrdersService {
   /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
    * userId real de Authoriza en vez de solo un texto libre. */
   async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
-    // Primero el precio del servidor: el cupo de crédito se valida con él
+    // Primero el precio del servidor (con el domicilio): el cupo de crédito se valida con él
     await this.priceMarketplaceOrder(createDto);
+    const delivery = await this.resolveOrderDelivery(createDto);
     // Compra a crédito: el cliente debe tener cupo disponible y estar al día.
     // La cuenta por cobrar se crea al facturar el pedido.
     if (this.requestedPlan(createDto) === 'CREDITO') {
@@ -431,7 +446,7 @@ export class OrdersService {
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: authUserId,
       customerName: createDto.customerName,
-    }, meta);
+    }, meta, delivery);
 
     const whatsapp = await this.getMarketplaceWhatsapp(createDto.tenantId);
     return {
@@ -449,6 +464,7 @@ export class OrdersService {
     createDto: CreateMarketplaceOrderDto,
     customer: { customerId: string | null; customerName: string },
     meta: ConsentMeta,
+    delivery: FulfillmentResult,
   ) {
     const { tenantId } = createDto;
 
@@ -471,7 +487,9 @@ export class OrdersService {
           userAgent: meta.userAgent?.slice(0, 500) || null,
         }
       : null;
-    const hasLocation = Number.isFinite(createDto.deliveryLatitude) && Number.isFinite(createDto.deliveryLongitude);
+    // Recoger en el local: la ubicación GPS no aplica
+    const hasLocation = delivery.fulfillment !== 'PICKUP'
+      && Number.isFinite(createDto.deliveryLatitude) && Number.isFinite(createDto.deliveryLongitude);
     const plan = this.requestedPlan(createDto);
     const options = plan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
     const timing = await this.getTimingSettings(tenantId);
@@ -511,7 +529,9 @@ export class OrdersService {
         customerName: customer.customerName,
         customerPhone: createDto.customerPhone?.trim() || null,
         customerEmail: createDto.customerEmail?.trim() || null,
-        customerAddress: createDto.customerAddress?.trim() || null,
+        customerAddress: delivery.address,
+        fulfillment: delivery.fulfillment,
+        deliveryFee: delivery.deliveryFee,
         requestedPaymentType: customer.customerId && plan === 'CREDITO' ? 'CREDITO' : null,
         paymentPlan: plan,
         depositRequired: terms?.depositRequired || 0,

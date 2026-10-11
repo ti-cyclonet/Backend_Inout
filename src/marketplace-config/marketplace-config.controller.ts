@@ -6,6 +6,7 @@ import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { resolvePaymentOptions } from '../orders/payment-plans';
 import { resolveScheduling } from '../orders/scheduling';
+import { resolveDeliveryOptions, validateDeliveryOptions } from '../orders/delivery-options';
 import { resolveThanksMessages } from '../orders/thanks-messages';
 import { BusinessParamsService } from '../config/business-params.service';
 import { storeInfoFrom, validateStoreInfo } from './store-info';
@@ -96,6 +97,22 @@ export class MarketplaceConfigController {
   }
 
   /** Programación de pedidos de la tienda (público: la usa el checkout). */
+  /** Formas de entrega: domicilio (con su valor) y/o recoger (público: las usa el checkout). */
+  @Get(':tenantId/delivery-options')
+  async getDeliveryOptions(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return resolveDeliveryOptions(config?.deliveryOptions);
+  }
+
+  @Patch(':tenantId/delivery-options')
+  @UseGuards(JwtAuthGuard)
+  async updateDeliveryOptions(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.updateDeliveryOptions(tenantId, validateDeliveryOptions(body));
+  }
+
   @Get(':tenantId/scheduling')
   async getScheduling(@Param('tenantId') tenantId: string) {
     const config = await this.marketplaceConfigService.getConfig(tenantId);
