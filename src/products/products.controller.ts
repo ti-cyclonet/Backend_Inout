@@ -62,23 +62,34 @@ export class ProductsController {
     return this.productsService.findOne(id, tenantId);
   }
 
+  // Recetas: solo el negocio dueño del producto. Antes eran públicas (sin
+  // token) y los ids de producto se ven en el MarketPlace.
+  @UseGuards(JwtAuthGuard)
   @Get(':id/composition')
-  getComposition(@Param('id') id: string) {
+  async getComposition(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    await this.productsService.findOne(id, tenantId);
     return this.productsService.getComposition(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id/composition-two')
-  getCompositionTwo(@Param('id') id: string) {
+  async getCompositionTwo(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    await this.productsService.findOne(id, tenantId);
     return this.productsService.getCompositionTwoByProduct(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id/composition-three')
-  getCompositionThree(@Param('id') id: string) {
+  async getCompositionThree(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    await this.productsService.findOne(id, tenantId);
     return this.productsService.getCompositionThreeByProduct(id);
   }
 
+  /** Ingredientes de la receta (Kardex → entrada de producto). */
+  @UseGuards(JwtAuthGuard)
   @Get(':id/ingredients')
-  getIngredients(@Param('id') id: string) {
+  async getIngredients(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    await this.productsService.findOne(id, tenantId);
     return this.productsService.getIngredients(id);
   }
 
@@ -90,8 +101,11 @@ export class ProductsController {
     return this.productsService.createProduction(productionData, tenantId);
   }
 
+  /** Historial de producción del producto (Kardex): solo el negocio dueño. */
+  @UseGuards(JwtAuthGuard)
   @Get(':id/movements')
-  getProductMovements(@Param('id') id: string) {
+  async getProductMovements(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    await this.productsService.findOne(id, tenantId);
     return this.productsService.getProductMovements(id);
   }
 

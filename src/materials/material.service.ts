@@ -13,7 +13,7 @@ import { MaterialImage } from './entities/material-image.entity';
 import { Activity } from './entities/activity.entity';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { validate as isUUID } from 'uuid';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
@@ -157,24 +157,28 @@ export class MaterialsService {
       .skip(offset)
       .getManyAndCount();
 
-    const materialsWithImages = await Promise.all(
-      materials.map(async (material) => {
-        const images = await this.materialImageRepository.find({
+    // Imágenes de toda la página en una sola consulta (antes era una por material:
+    // con páginas grandes, como al cargar todos los materiales para una receta,
+    // eran cientos de consultas)
+    const allImages = materials.length
+      ? await this.materialImageRepository.find({
           where: {
-            strEntityId: material.strId,
+            strEntityId: In(materials.map((m) => m.strId)),
             strEntityType: 'material',
             strStatus: 'active'
           }
-        });
-        return {
-          ...material,
-          images: images.map(img => ({
-            strId: img.strId,
-            strImageUrl: img.strImageUrl
-          }))
-        };
-      })
-    );
+        })
+      : [];
+    const imagesByMaterial = new Map<string, { strId: string; strImageUrl: string }[]>();
+    for (const img of allImages) {
+      const list = imagesByMaterial.get(img.strEntityId) || [];
+      list.push({ strId: img.strId, strImageUrl: img.strImageUrl });
+      imagesByMaterial.set(img.strEntityId, list);
+    }
+    const materialsWithImages = materials.map((material) => ({
+      ...material,
+      images: imagesByMaterial.get(material.strId) || [],
+    }));
 
     return {
       data: materialsWithImages,
