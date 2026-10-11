@@ -53,6 +53,10 @@ export class Sale {
   @Column({ type: 'varchar', length: 20, nullable: true })
   paymentMethod: string | null;
 
+  /** Ganancia al facturar: ingreso sin impuestos ni domicilio − costo de lo vendido (common/sale-profit.ts). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  profit: number | null;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
 }
