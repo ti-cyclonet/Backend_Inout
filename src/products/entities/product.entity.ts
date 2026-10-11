@@ -68,6 +68,11 @@ export class Product {
   @Column({ type: 'int', nullable: true })
   intProductionLeadHours: number | null;
 
+  /** Producto "para armar": listas de la carta de las que el cliente escoge
+   * en la tienda (ej. 2 proteínas). Ver products/product-choices.ts. */
+  @Column({ type: 'json', nullable: true })
+  jsonChoiceGroups: { block: string; min: number; max: number }[] | null;
+
   @ManyToOne(() => Category)
   @JoinColumn({ name: 'intCategoryId' })
   category: Category;

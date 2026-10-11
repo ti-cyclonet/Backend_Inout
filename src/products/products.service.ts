@@ -15,6 +15,7 @@ import { BusinessParamsService } from '../config/business-params.service';
 import { convertUnits } from 'src/common/utils/unit-conversion';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { mapResaleItem } from '../common/resale';
+import { resolveChoiceGroups } from './product-choices';
 
 @Injectable()
 export class ProductsService {
@@ -61,6 +62,7 @@ export class ProductsService {
 
       const product = this.productRepository.create({
         ...productData,
+        jsonChoiceGroups: resolveChoiceGroups(productData.jsonChoiceGroups),
         fltPrice: finalPrice || productData.fltPrice,
         strCode: code,
         strTenantId: tenantId,
@@ -612,6 +614,7 @@ export class ProductsService {
       // Update product data
       Object.assign(product, {
         ...productData,
+        ...('jsonChoiceGroups' in productData ? { jsonChoiceGroups: resolveChoiceGroups(productData.jsonChoiceGroups) } : {}),
         strName: productData.strName?.toUpperCase() || product.strName,
         intCategoryId: categoryId || product.intCategoryId
       });

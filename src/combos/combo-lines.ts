@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { EntityManager } from 'typeorm';
 import { Combo } from './entities/combo.entity';
 import { loadComponents, assertSellableComponents } from './combo-components';
+import { choicesText } from '../products/product-choices';
 import { prorate } from './combo-math';
 
 /** Datos del combo que viajan en cada línea de componente de un pedido/venta. */
@@ -106,6 +107,8 @@ export interface DisplayLine {
   total: number;
   /** Combo: lo que incluye ("2 x Hamburguesa"). */
   components?: string[];
+  /** Producto "para armar": lo escogido ("Proteínas: Pollo, Cerdo"). */
+  options?: string[];
 }
 
 const lineTotal = (it: any) =>
@@ -126,6 +129,7 @@ export function groupComboLines(items: any[]): DisplayLine[] {
         quantity: Number(it?.quantity) || 0,
         unitPrice: Number(it?.unitPrice) || 0,
         total: lineTotal(it),
+        ...(choicesText(it?.choices).length ? { options: choicesText(it.choices) } : {}),
       });
       continue;
     }
