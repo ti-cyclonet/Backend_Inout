@@ -80,6 +80,10 @@ export class Material {
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: false, default: 0 })
   fltSalePrice: number;
 
+  /** Margen de ganancia propio (sobre el costo). null = usar el de su categoría o el del período, para el precio de reventa (ver common/pricing-margin.ts). */
+  @Column({ type: 'decimal', precision: 7, scale: 2, nullable: true })
+  fltMarginPercent: number | null;
+
   /** Presentaciones que se planea vender al mes: prorratea el costo indirecto. */
   @Column({ type: 'int', nullable: false, default: 0 })
   ingPlannedMonthlyUnits: number;

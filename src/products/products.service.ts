@@ -16,6 +16,7 @@ import { convertUnits } from 'src/common/utils/unit-conversion';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { mapResaleItem } from '../common/resale';
 import { resolveChoiceGroups } from './product-choices';
+import { normalizeMarginPercent } from '../common/pricing-margin';
 
 @Injectable()
 export class ProductsService {
@@ -49,12 +50,17 @@ export class ProductsService {
       const code = await this.generateProductCode(tenantId);
       const { composition, compositionTwo, compositionThree, images, categoryId, ...productData } = createDto;
       
-      // Si el producto tiene costo y no tiene precio, sugerir precio con margen de ganancia
+      // Si el producto tiene costo y no tiene precio, sugerir precio con su margen
+      // (el del producto, el de su categoría o el del período)
       let finalPrice = productData.fltPrice;
       const productCost = (createDto as any).fltCost || 0;
+      const marginPercent = normalizeMarginPercent(productData.fltMarginPercent);
       if (productCost > 0 && (!finalPrice || finalPrice === 0)) {
         try {
-          finalPrice = await this.businessParamsService.calculateSuggestedPrice(tenantId, productCost);
+          const categoryMargin = categoryId
+            ? (await this.dataSource.query(`SELECT "fltMarginPercent" FROM manufacturing.categories WHERE id = $1 AND "tenantId" = $2`, [categoryId, tenantId]).catch(() => []))?.[0]?.fltMarginPercent ?? null
+            : null;
+          finalPrice = await this.businessParamsService.calculateSuggestedPrice(tenantId, productCost, { item: marginPercent, category: categoryMargin });
         } catch {
           finalPrice = productCost; // fallback: precio = costo
         }
@@ -63,6 +69,7 @@ export class ProductsService {
       const product = this.productRepository.create({
         ...productData,
         jsonChoiceGroups: resolveChoiceGroups(productData.jsonChoiceGroups),
+        fltMarginPercent: marginPercent,
         fltPrice: finalPrice || productData.fltPrice,
         strCode: code,
         strTenantId: tenantId,
@@ -615,6 +622,7 @@ export class ProductsService {
       Object.assign(product, {
         ...productData,
         ...('jsonChoiceGroups' in productData ? { jsonChoiceGroups: resolveChoiceGroups(productData.jsonChoiceGroups) } : {}),
+        ...('fltMarginPercent' in productData ? { fltMarginPercent: normalizeMarginPercent(productData.fltMarginPercent) } : {}),
         strName: productData.strName?.toUpperCase() || product.strName,
         intCategoryId: categoryId || product.intCategoryId
       });

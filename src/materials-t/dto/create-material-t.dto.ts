@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsNumber, IsArray, IsBoolean, ValidateNested, Min, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNumber, IsArray, IsBoolean, ValidateNested, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CompositionDto {
@@ -88,6 +88,13 @@ export class CreateMaterialTDto {
   @IsOptional()
   @Min(0)
   fltSalePrice?: number;
+
+  /** Margen propio (sobre el costo, 0–1000 %); null o vacío = heredar. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  fltMarginPercent?: number | null;
 
   @IsInt()
   @IsOptional()

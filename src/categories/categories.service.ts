@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { normalizeMarginPercent } from '../common/pricing-margin';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
@@ -19,6 +20,7 @@ export class CategoriesService {
 
       const category = this.categoryRepository.create({
         ...createCategoryDto,
+        fltMarginPercent: normalizeMarginPercent(createCategoryDto.fltMarginPercent),
         code,
         tenantId,
         status: createCategoryDto.status || 'active',
@@ -93,7 +95,10 @@ export class CategoriesService {
 
   async update(id: number, updateCategoryDto: Partial<CreateCategoryDto>, tenantId: string): Promise<Category> {
     const category = await this.findOne(id, tenantId);
-    Object.assign(category, updateCategoryDto);
+    Object.assign(category, {
+      ...updateCategoryDto,
+      ...('fltMarginPercent' in (updateCategoryDto || {}) ? { fltMarginPercent: normalizeMarginPercent(updateCategoryDto.fltMarginPercent) } : {}),
+    });
     return await this.categoryRepository.save(category);
   }
 
