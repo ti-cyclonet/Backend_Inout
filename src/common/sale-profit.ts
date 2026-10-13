@@ -30,9 +30,10 @@ export function stockUnitCost(line: Pick<ResolvedStockLine, 'itemType' | 'entity
 
 export function computeSaleProfit(
   lines: Pick<ResolvedStockLine, 'itemType' | 'entity' | 'baseQuantity'>[],
-  amounts: { total: unknown; tax?: unknown; deliveryFee?: unknown },
+  amounts: { total: unknown; tax?: unknown; deliveryFee?: unknown; giftCards?: unknown },
 ): SaleProfit {
-  const revenue = round2(Math.max(0, num(amounts.total) - num(amounts.tax) - num(amounts.deliveryFee)));
+  // Bonos de regalo vendidos: es dinero recibido por adelantado, no ganancia
+  const revenue = round2(Math.max(0, num(amounts.total) - num(amounts.tax) - num(amounts.deliveryFee) - num(amounts.giftCards)));
   let cost = 0;
   let costIncomplete = false;
   for (const line of lines) {

@@ -34,6 +34,8 @@ import {
 import { FulfillmentResult, resolveDeliveryOptions, resolveFulfillment } from './delivery-options';
 import { validateLineChoices } from '../products/product-choices';
 import { computeSaleProfit, SaleProfit } from '../common/sale-profit';
+import { GiftCardsService, StoreCustomer } from './gift-cards/gift-cards.service';
+import { depositWithGiftCards, isGiftCardLine } from './gift-cards/gift-cards';
 import { resolveMenuExtras } from '../marketplace-config/menu-extras';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
@@ -57,6 +59,7 @@ export class OrdersService {
     private creditService: CreditService,
     private marketplaceConfigService: MarketplaceConfigService,
     private pricingService: PricingService,
+    private giftCardsService: GiftCardsService,
   ) {}
 
   /**
@@ -65,11 +68,17 @@ export class OrdersService {
    * del navegador, que el comprador podía alterar.
    */
   private async priceMarketplaceOrder(createDto: CreateMarketplaceOrderDto): Promise<void> {
-    const priced = await this.pricingService.priceLines(createDto.tenantId, createDto.items, 'MARKETPLACE', 'ENFORCE');
-    createDto.items = priced.items;
-    createDto.subtotal = priced.subtotal;
+    // Bonos de regalo: valor validado contra la tienda, sin stock ni promociones
+    const { giftLines, otherItems } = await this.giftCardsService.prepareLines(createDto.tenantId, createDto.items);
+    if (giftLines.length && createDto.giftCardIds?.length) {
+      throw new BadRequestException('Los bonos de regalo no se pueden pagar con otros bonos.');
+    }
+    const priced = await this.pricingService.priceLines(createDto.tenantId, otherItems, 'MARKETPLACE', 'ENFORCE');
+    const giftTotal = giftLines.reduce((s, l) => s + l.subtotal, 0);
+    createDto.items = [...(priced.items || []), ...giftLines];
+    createDto.subtotal = priced.subtotal + giftTotal;
     createDto.tax = 0;
-    createDto.total = priced.subtotal;
+    createDto.total = priced.subtotal + giftTotal;
     await this.applyLineChoices(createDto);
   }
 
@@ -112,8 +121,11 @@ export class OrdersService {
    * del servidor y antes del cupo de crédito y del plan de pago, que usan el total.
    */
   private async resolveOrderDelivery(createDto: CreateMarketplaceOrderDto): Promise<FulfillmentResult> {
-    const config = createDto.fulfillment ? await this.marketplaceConfigService.getConfig(createDto.tenantId) : null;
-    const delivery = resolveFulfillment(createDto.fulfillment, createDto.customerAddress, resolveDeliveryOptions(config?.deliveryOptions));
+    // Solo bonos de regalo: no hay nada que entregar (ni domicilio ni dirección)
+    const giftOnly = (createDto.items || []).length > 0 && createDto.items.every(isGiftCardLine);
+    const requested = giftOnly ? undefined : createDto.fulfillment;
+    const config = requested ? await this.marketplaceConfigService.getConfig(createDto.tenantId) : null;
+    const delivery = resolveFulfillment(requested, giftOnly ? undefined : createDto.customerAddress, resolveDeliveryOptions(config?.deliveryOptions));
     if (delivery.deliveryFee > 0) createDto.total = (Number(createDto.total) || 0) + delivery.deliveryFee;
     return delivery;
   }
@@ -448,6 +460,10 @@ export class OrdersService {
    * además queda registrado en Authoriza como cliente potencial (best-effort,
    * no bloquea el pedido si esa llamada falla). */
   async createFromMarketplace(createDto: CreateMarketplaceOrderDto, meta: ConsentMeta = {}) {
+    // Usar un bono exige cuenta de cliente registrada en la tienda
+    if (createDto.giftCardIds?.length) {
+      throw new BadRequestException('Inicia sesión o crea tu cuenta en la tienda para pagar con tus bonos.');
+    }
     await this.priceMarketplaceOrder(createDto);
     const delivery = await this.resolveOrderDelivery(createDto);
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
@@ -471,7 +487,7 @@ export class OrdersService {
 
   /** Checkout de un clienteInout autenticado: el pedido queda vinculado a su
    * userId real de Authoriza en vez de solo un texto libre. */
-  async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}) {
+  async createFromMarketplaceAuthenticated(createDto: CreateMarketplaceOrderDto, authUserId: string, meta: ConsentMeta = {}, authEmail: string | null = null) {
     // Primero el precio del servidor (con el domicilio): el cupo de crédito se valida con él
     await this.priceMarketplaceOrder(createDto);
     const delivery = await this.resolveOrderDelivery(createDto);
@@ -483,7 +499,7 @@ export class OrdersService {
     const savedOrder = await this.saveMarketplaceOrder(createDto, {
       customerId: authUserId,
       customerName: createDto.customerName,
-    }, meta, delivery);
+    }, meta, delivery, createDto.giftCardIds?.length ? { customer: { id: authUserId, email: authEmail }, ids: createDto.giftCardIds } : null);
 
     const whatsapp = await this.getMarketplaceWhatsapp(createDto.tenantId);
     return {
@@ -502,6 +518,7 @@ export class OrdersService {
     customer: { customerId: string | null; customerName: string },
     meta: ConsentMeta,
     delivery: FulfillmentResult,
+    redeem: { customer: StoreCustomer; ids: string[] } | null = null,
   ) {
     const { tenantId } = createDto;
 
@@ -527,24 +544,43 @@ export class OrdersService {
     // Recoger en el local: la ubicación GPS no aplica
     const hasLocation = delivery.fulfillment !== 'PICKUP'
       && Number.isFinite(createDto.deliveryLatitude) && Number.isFinite(createDto.deliveryLongitude);
-    const plan = this.requestedPlan(createDto);
-    const options = plan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
+    const requestedPlan = this.requestedPlan(createDto);
+    const options = requestedPlan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
     const timing = await this.getTimingSettings(tenantId);
     const marketplaceConfig = createDto.scheduledStart ? await this.marketplaceConfigService.getConfig(tenantId) : null;
 
     return this.dataSource.transaction(async (manager) => {
+      // Bonos de regalo: no se expanden ni reservan stock
+      const giftLines = (createDto.items || []).filter(isGiftCardLine);
       // Combos virtuales -> sus componentes (precio del combo prorrateado)
-      createDto.items = await expandComboLines(manager, tenantId, createDto.items);
+      createDto.items = await expandComboLines(manager, tenantId, (createDto.items || []).filter((i) => !isGiftCardLine(i)));
       // Reserva lo disponible; lo que falte de productos "bajo pedido" queda por fabricar
       const stock = await reserveOrderStock(manager, tenantId, createDto.items);
 
+      // Bonos con los que paga (cliente con sesión): bloqueados hasta el commit
+      const total = Number(createDto.total) || 0;
+      const redeemCards = redeem ? await this.giftCardsService.lockForRedemption(manager, tenantId, redeem.customer, redeem.ids) : [];
+      const allocation = this.giftCardsService.allocate(total, redeemCards);
+      const bonoPaid = allocation.reduce((s, a) => s + a.amount, 0);
+      const remaining = Math.round((total - bonoPaid) * 100) / 100;
+      // Sin forma de pago elegida (tienda sin opciones) y con bono: el saldo, contra entrega
+      const plan: PaymentPlan | null = requestedPlan || (bonoPaid > 0 ? (remaining >= 1 ? 'CONTRA_ENTREGA' : 'CONTADO') : null);
+
       // Condiciones del plan (montos y plazos calculados aquí, nunca del cliente)
-      const terms = plan
-        ? computePlanTerms(plan, options!, {
-            total: Number(createDto.total) || 0,
+      // El plan aplica sobre lo que queda por pagar después de los bonos
+      const planTerms = requestedPlan && remaining >= 1
+        ? computePlanTerms(requestedPlan, options!, {
+            total: remaining,
             hasAccount: !!customer.customerId,
             hasMadeToOrder: stock.hasMadeToOrder,
           })
+        : null;
+      const terms = plan
+        ? {
+            depositRequired: depositWithGiftCards(total, bonoPaid, planTerms?.depositRequired || 0),
+            depositDeadline: planTerms?.depositDeadline || null,
+            layawayDeadline: planTerms?.layawayDeadline || null,
+          }
         : null;
 
       // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
@@ -572,9 +608,9 @@ export class OrdersService {
         requestedPaymentType: customer.customerId && plan === 'CREDITO' ? 'CREDITO' : null,
         paymentPlan: plan,
         depositRequired: terms?.depositRequired || 0,
-        amountPaid: 0,
+        amountPaid: bonoPaid,
         paymentStatus: plan
-          ? computePaymentStatus({ total: Number(createDto.total) || 0, depositRequired: terms?.depositRequired || 0, amountPaid: 0 })
+          ? computePaymentStatus({ total, depositRequired: terms?.depositRequired || 0, amountPaid: bonoPaid })
           : null,
         depositDeadline: terms?.depositDeadline || null,
         layawayDeadline: terms?.layawayDeadline || null,
@@ -586,7 +622,7 @@ export class OrdersService {
         trackingToken: randomBytes(24).toString('hex'),
         deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
         deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,
-        items: stock.items,
+        items: [...stock.items, ...giftLines],
         notes: createDto.notes || null,
         subtotal: createDto.subtotal || 0,
         tax: createDto.tax || 0,
@@ -595,7 +631,11 @@ export class OrdersService {
         consents,
       });
       this.enterStage(order, OrderStatus.CONFIRMED, timing);
-      return manager.save(order);
+      const saved = await manager.save(order);
+      // Bonos que compra (PENDIENTES hasta el pago) y bonos con los que paga
+      await this.giftCardsService.createForOrder(manager, saved, { userId: customer.customerId, name: (customer.customerName || '').split(' | ')[0] });
+      if (allocation.length) await this.giftCardsService.redeem(manager, saved, redeem!.customer, redeemCards, allocation);
+      return saved;
     });
   }
 
@@ -767,7 +807,9 @@ export class OrdersService {
       [OrderStatus.CANCELLED]: [],
     };
 
-    if (!allowedTransitions[order.status]?.includes(newStatus)) {
+    const giftOnly = (order.items || []).length > 0 && (order.items || []).every(isGiftCardLine);
+    const giftShortcut = giftOnly && order.status === OrderStatus.CONFIRMED && newStatus === OrderStatus.DELIVERED;
+    if (!allowedTransitions[order.status]?.includes(newStatus) && !giftShortcut) {
       throw new BadRequestException(
         `No se puede cambiar el estado de ${order.status} a ${newStatus}`,
       );
@@ -869,6 +911,14 @@ export class OrdersService {
     order.status = newStatus;
     this.enterStage(order, newStatus, await this.getTimingSettings(tenantId));
     if (newStatus === OrderStatus.CANCELLED) {
+      const refunded = await this.dataSource.transaction((m) => this.giftCardsService.onOrderCancelled(m, order, null));
+      if (refunded) {
+        const row = await this.dataSource.query(
+          `SELECT COALESCE(SUM(amount), 0) AS total FROM manufacturing.order_payments WHERE "orderId" = $1 AND status = 'VERIFICADO'`,
+          [order.id],
+        );
+        order.amountPaid = Math.round((Number(row?.[0]?.total) || 0) * 100) / 100;
+      }
       order.cancellationReason = cancellationReason;
       order.cancelledAt = new Date();
       // Con pagos verificados el negocio debe decidir la devolución
@@ -891,7 +941,8 @@ export class OrdersService {
       order.invoicedAt = new Date();
       // Ganancia del pedido: sin impuestos ni domicilio, con el costo actual de lo vendido
       const costLines = await resolveStockLines(this.dataSource.manager, tenantId, order.items || [], { skipMissing: true });
-      invoicedProfit = computeSaleProfit(costLines, { total: order.total, tax: order.tax, deliveryFee: order.deliveryFee });
+      const giftCards = (order.items || []).filter(isGiftCardLine).reduce((s, l: any) => s + (Number(l.subtotal) || 0), 0);
+      invoicedProfit = computeSaleProfit(costLines, { total: order.total, tax: order.tax, deliveryFee: order.deliveryFee, giftCards });
       order.profit = invoicedProfit.profit;
       if (isCredit) {
         const saved = await this.dataSource.transaction(async (manager) => {
@@ -904,13 +955,20 @@ export class OrdersService {
             // Si ya hubo anticipos/abonos, a crédito queda solo el saldo
             amount: order.paymentPlan ? pending : Number(order.total) || 0,
           });
-          return manager.save(order);
+          const out = await manager.save(order);
+          // Bonos comprados a crédito: se activan al facturar
+          await this.giftCardsService.activateForOrder(manager, out);
+          return out;
         });
         return { message: 'Pedido facturado a crédito', order: saved, profit: invoicedProfit };
       }
     }
 
     const updatedOrder = await this.orderRepository.save(order);
+    // Facturado: los bonos que compró este pedido quedan activos
+    if (newStatus === OrderStatus.INVOICED) {
+      await this.dataSource.transaction((m) => this.giftCardsService.activateForOrder(m, updatedOrder));
+    }
 
     return { message: 'Estado actualizado exitosamente', order: updatedOrder, ...(invoicedProfit ? { profit: invoicedProfit } : {}) };
   }

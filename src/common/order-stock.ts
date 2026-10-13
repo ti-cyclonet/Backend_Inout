@@ -114,6 +114,8 @@ export async function reserveOrderStock<T extends OrderStockItem>(
   let r = 0;
   for (const item of annotated) {
     if (!item?.productId) continue;
+    // Los bonos no tienen stock: resolveStockLines también los omite
+    if ((item as any).itemType === 'gift_card') continue;
     const line = resolved[r++];
     const key = `${line.itemType}:${line.id}`;
     const factor = line.quantity > 0 ? line.baseQuantity / line.quantity : 1;

@@ -57,6 +57,16 @@ export class MarketplaceConfigService {
 
   /** Guarda la programación de pedidos (ya normalizada con resolveScheduling). */
   /** Formas de entrega (ya validadas con validateDeliveryOptions). */
+  async updateGiftCards(tenantId: string, options: Record<string, any>) {
+    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (!config) {
+      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego los bonos de regalo.');
+    }
+    config.giftCards = options;
+    await this.marketplaceConfigRepository.save(config);
+    return options;
+  }
+
   async updateDeliveryOptions(tenantId: string, options: Record<string, any>) {
     const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
     if (!config) {

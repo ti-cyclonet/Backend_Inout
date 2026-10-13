@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean, IsObject, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PAYMENT_PLANS } from '../payment-plans';
 
@@ -33,8 +33,13 @@ export class MarketplaceOrderItemDto {
   /** 'product' (default), material de reventa ('material' | 'material_t'),
    * kit armado ('kit') o combo virtual ('combo'). El precio lo pone el servidor. */
   @IsOptional()
-  @IsIn(['product', 'material', 'material_t', 'kit', 'combo'])
+  @IsIn(['product', 'material', 'material_t', 'kit', 'combo', 'gift_card'])
   itemType?: string;
+
+  /** Bono de regalo (itemType 'gift_card'): valor, para quién y mensaje. Lo valida el servidor. */
+  @IsOptional()
+  @IsObject()
+  giftCard?: Record<string, any>;
 
   /** Producto "para armar": lo que escogió el cliente (lo valida el servidor). */
   @IsOptional()
@@ -138,6 +143,12 @@ export class CreateMarketplaceOrderDto {
   @IsOptional()
   @IsIn(PAYMENT_PLANS as unknown as string[])
   paymentPlan?: string;
+
+  /** Bonos con los que el cliente (con sesión) paga parte o todo el pedido. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  giftCardIds?: string[];
 
   /** A domicilio (exige dirección y suma el valor del domicilio) o recoger en el local. */
   @IsOptional()

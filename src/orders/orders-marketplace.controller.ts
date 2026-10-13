@@ -85,6 +85,7 @@ export class OrdersMarketplaceController {
       { ...createDto, tenantId: user.tenantId },
       user.id,
       this.requestMeta(req),
+      user.email || null,
     );
   }
 }
