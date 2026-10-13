@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { GiftCard, GiftCardMovement } from './orders/gift-cards/gift-card.entity';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -80,7 +81,7 @@ import { MarketplaceItemStat } from './marketplace-config/entities/marketplace-i
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {

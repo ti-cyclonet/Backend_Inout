@@ -43,6 +43,10 @@ export class MarketplaceConfig {
   @Column({ type: 'json', nullable: true })
   scheduling: Record<string, any> | null;
 
+  /** Bonos de regalo: activo, valores mínimo/máximo/sugeridos y vigencia (orders/gift-cards). */
+  @Column({ type: 'json', nullable: true })
+  giftCards: Record<string, any> | null;
+
   /** Entrega: a domicilio (con su valor) y/o recoger en el local (ver orders/delivery-options.ts). */
   @Column({ type: 'json', nullable: true })
   deliveryOptions: Record<string, any> | null;
