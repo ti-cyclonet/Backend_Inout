@@ -13,6 +13,7 @@ import { TenantBrandingService } from '../tenant-branding/tenant-branding.servic
 import { logoVariant } from '../tenant-branding/logo-url';
 import { resolveThanksMessages } from './thanks-messages';
 import { resolveDeliveryOptions } from './delivery-options';
+import { GiftCardsService } from './gift-cards/gift-cards.service';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
@@ -49,6 +50,7 @@ export class OrderPaymentsService {
     private readonly marketplaceConfigService: MarketplaceConfigService,
     private readonly ordersService: OrdersService,
     private readonly brandingService: TenantBrandingService,
+    private readonly giftCardsService: GiftCardsService,
   ) {}
 
   /**
@@ -202,6 +204,7 @@ export class OrderPaymentsService {
       items: (order.items || []).map((i: any) => ({
         productName: i.productName,
         quantity: i.quantity,
+        ...(i.itemType === 'gift_card' ? { itemType: 'gift_card' } : {}),
         ...(Array.isArray(i.choices) && i.choices.length ? { choices: i.choices } : {}),
         subtotal: i.subtotal,
         toManufacture: toManufactureOf(i as any),
@@ -240,6 +243,8 @@ export class OrderPaymentsService {
       thanks: delivered && thanksMessages.enabled
         ? { ...(await this.thanksFor(order)), brandColor: config?.brandColor || null, messages: thanksMessages }
         : null,
+      /** Bonos de regalo que compró este pedido (el código, solo cuando está activo). */
+      giftCards: await this.giftCardsService.forPurchaseOrder(order.id),
       payments: payments.map((p) => ({
         amount: Number(p.amount),
         method: p.method,
@@ -265,7 +270,10 @@ export class OrderPaymentsService {
         amountPaid: order.amountPaid,
       });
     }
-    return manager.save(order);
+    const saved = await manager.save(order);
+    // Pago completo: los bonos de regalo que compró este pedido quedan activos
+    if (saved.paymentStatus === 'PAGADO') await this.giftCardsService.activateForOrder(manager, saved);
+    return saved;
   }
 
   private async findByToken(trackingToken: string): Promise<Order> {

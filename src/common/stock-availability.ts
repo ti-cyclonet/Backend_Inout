@@ -66,6 +66,8 @@ export async function resolveStockLines(
 
   for (const line of lines || []) {
     if (!line?.productId) continue;
+    // Bono de regalo: no es inventario (ver orders/gift-cards)
+    if (line.itemType === 'gift_card') continue;
     if (line.itemType === 'combo') {
       // Defensa: los combos virtuales se expanden antes (expandComboLines)
       throw new BadRequestException('Un combo debe expandirse en sus componentes antes de mover stock.');

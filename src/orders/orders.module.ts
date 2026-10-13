@@ -17,10 +17,13 @@ import { TenantBrandingModule } from '../tenant-branding/tenant-branding.module'
 import { MarketplaceConfigModule } from '../marketplace-config/marketplace-config.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { GiftCard, GiftCardMovement } from './gift-cards/gift-card.entity';
+import { GiftCardsService } from './gift-cards/gift-cards.service';
+import { GiftCardsController, GiftCardsMarketplaceController } from './gift-cards/gift-cards.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, Product, InventoryMovement, OrderPayment, OrderSettings]),
+    TypeOrmModule.forFeature([Order, Product, InventoryMovement, OrderPayment, OrderSettings, GiftCard, GiftCardMovement]),
     UsageCountersModule,
     CreditModule,
     MarketplaceConfigModule,
@@ -28,8 +31,8 @@ import { PromotionsModule } from '../promotions/promotions.module';
     PromotionsModule,
     TenantBrandingModule,
   ],
-  controllers: [OrdersMarketplaceController, OrdersController],
-  providers: [OrdersService, OrderPaymentsService, OrderAutomationService, ShotraDeliveryService],
+  controllers: [OrdersMarketplaceController, OrdersController, GiftCardsMarketplaceController, GiftCardsController],
+  providers: [OrdersService, OrderPaymentsService, OrderAutomationService, ShotraDeliveryService, GiftCardsService],
   exports: [OrdersService, OrderPaymentsService],
 })
 export class OrdersModule {}

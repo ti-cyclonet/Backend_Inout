@@ -11,6 +11,7 @@ import { resolveThanksMessages } from '../orders/thanks-messages';
 import { BusinessParamsService } from '../config/business-params.service';
 import { storeInfoFrom, validateStoreInfo } from './store-info';
 import { MENU_EXTRA_IMAGE_MAX_BYTES, resolveMenuExtras } from './menu-extras';
+import { resolveGiftCardOptions, validateGiftCardOptions } from '../orders/gift-cards/gift-cards';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -97,6 +98,22 @@ export class MarketplaceConfigController {
   }
 
   /** Programación de pedidos de la tienda (público: la usa el checkout). */
+  /** Bonos de regalo de la tienda (público: la tienda muestra si los vende y sus valores). */
+  @Get(':tenantId/gift-cards')
+  async getGiftCards(@Param('tenantId') tenantId: string) {
+    const config = await this.marketplaceConfigService.getConfig(tenantId);
+    return resolveGiftCardOptions(config?.giftCards);
+  }
+
+  @Patch(':tenantId/gift-cards')
+  @UseGuards(JwtAuthGuard)
+  async updateGiftCards(@Param('tenantId') tenantId: string, @Body() body: any, @Request() req) {
+    if (req.user.tenantId !== tenantId) {
+      throw new ForbiddenException('No tienes permisos para modificar este marketplace');
+    }
+    return this.marketplaceConfigService.updateGiftCards(tenantId, validateGiftCardOptions(body));
+  }
+
   /** Formas de entrega: domicilio (con su valor) y/o recoger (público: las usa el checkout). */
   @Get(':tenantId/delivery-options')
   async getDeliveryOptions(@Param('tenantId') tenantId: string) {
