@@ -11,7 +11,7 @@ import { applyStockDelta, movementTarget, resolveStockLines } from '../common/st
 import { previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
-import { assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
+import { assertOpenForAsap, assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import {
   balanceDue,
@@ -547,7 +547,13 @@ export class OrdersService {
     const requestedPlan = this.requestedPlan(createDto);
     const options = requestedPlan ? resolvePaymentOptions((await this.marketplaceConfigService.getConfig(tenantId))?.paymentOptions) : null;
     const timing = await this.getTimingSettings(tenantId);
-    const marketplaceConfig = createDto.scheduledStart ? await this.marketplaceConfigService.getConfig(tenantId) : null;
+    const marketplaceConfig = await this.marketplaceConfigService.getConfig(tenantId);
+    // Horario de atención: sin franja programada, la tienda debe estar abierta
+    // (comprar solo bonos de regalo no depende del horario)
+    const onlyGiftCards = (createDto.items || []).length > 0 && (createDto.items || []).every(isGiftCardLine);
+    if (!createDto.scheduledStart && !onlyGiftCards) {
+      assertOpenForAsap(resolveScheduling(marketplaceConfig?.scheduling), new Date());
+    }
 
     return this.dataSource.transaction(async (manager) => {
       // Bonos de regalo: no se expanden ni reservan stock

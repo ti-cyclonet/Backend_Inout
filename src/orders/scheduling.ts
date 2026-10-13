@@ -2,6 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 
 /**
  * Pedidos programados: el cliente elige fecha + franja horaria. Funciones puras.
+ * `hours` es además el HORARIO DE ATENCIÓN de la tienda: con `onlyDuringHours`
+ * los pedidos "lo antes posible" solo se reciben con la tienda abierta.
  *
  * Todo el horario está en hora de Colombia (America/Bogota, UTC-5 fijo, sin
  * horario de verano); se guarda y compara en UTC.
@@ -20,6 +22,8 @@ export interface DayHours {
 
 export interface SchedulingOptions {
   enabled: boolean;
+  /** Recibir pedidos "lo antes posible" solo dentro del horario de atención. */
+  onlyDuringHours: boolean;
   /** Duración de cada franja en minutos (15–240). */
   slotMinutes: number;
   /** Anticipación mínima en horas desde ahora. */
@@ -36,6 +40,7 @@ const defaultHours = (): DayHours[] =>
 
 export const DEFAULT_SCHEDULING: SchedulingOptions = {
   enabled: false,
+  onlyDuringHours: false,
   slotMinutes: 60,
   minLeadHours: 2,
   maxDaysAhead: 14,
@@ -71,6 +76,7 @@ export function resolveScheduling(saved?: Partial<SchedulingOptions> | null): Sc
     : Math.max(1, Math.round(Number(s.maxOrdersPerSlot)) || 1);
   return {
     enabled: s.enabled ?? d.enabled,
+    onlyDuringHours: s.onlyDuringHours === true,
     slotMinutes: clamp(Math.round(num(s.slotMinutes, d.slotMinutes)), 15, 240),
     minLeadHours: clamp(num(s.minLeadHours, d.minLeadHours), 0, 24 * 30),
     maxDaysAhead: clamp(Math.round(num(s.maxDaysAhead, d.maxDaysAhead)), 1, 180),
@@ -165,4 +171,58 @@ export function assertSlotAvailable(
     throw new BadRequestException(messages[slot.reason!]);
   }
   return { start: slot.start, end: slot.end };
+}
+
+const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/** '18:30' → '6:30 p. m.' (como lo muestra la tienda). */
+export function formatHour(hhmm: string): string {
+  const m = toMinutes(hhmm);
+  if (m === null) return hhmm;
+  const h = Math.floor(m / 60);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m % 60).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+}
+
+/** ¿La tienda atiende en ese instante según su horario? */
+export function isOpenAt(options: SchedulingOptions, at: Date): boolean {
+  const date = bogotaDate(at);
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const h = options.hours.find((x) => x.day === weekday);
+  if (!h?.active) return false;
+  const t = at.getTime();
+  return t >= bogotaToUtc(date, toMinutes(h.open)!).getTime() && t < bogotaToUtc(date, toMinutes(h.close)!).getTime();
+}
+
+/** Próxima apertura después de `at` (dentro de una semana), o null si nunca abre. */
+export function nextOpening(options: SchedulingOptions, at: Date): { at: Date; day: number; open: string; close: string } | null {
+  const today = bogotaDate(at);
+  for (let i = 0; i <= 7; i++) {
+    const date = bogotaDate(new Date(bogotaToUtc(today, 12 * 60).getTime() + i * 86400000));
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const h = options.hours.find((x) => x.day === weekday);
+    if (!h?.active) continue;
+    const start = bogotaToUtc(date, toMinutes(h.open)!);
+    if (start.getTime() > at.getTime()) return { at: start, day: weekday, open: h.open, close: h.close };
+  }
+  return null;
+}
+
+/** "hoy a las 6:30 p. m." / "mañana a las 8:00 a. m." / "el lunes a las 8:00 a. m.". */
+export function describeOpening(next: { at: Date; open: string }, now: Date): string {
+  const days = Math.round((bogotaToUtc(bogotaDate(next.at), 0).getTime() - bogotaToUtc(bogotaDate(now), 0).getTime()) / 86400000);
+  const when = days === 0 ? 'hoy' : days === 1 ? 'mañana' : `el ${DAY_NAMES[new Date(`${bogotaDate(next.at)}T12:00:00Z`).getUTCDay()]}`;
+  return `${when} a las ${formatHour(next.open)}`;
+}
+
+/**
+ * Pedido "lo antes posible" con la tienda cerrada: si la tienda solo atiende en
+ * su horario, se rechaza con cuándo abre (y se invita a programarlo si puede).
+ */
+export function assertOpenForAsap(options: SchedulingOptions, now: Date): void {
+  if (!options.onlyDuringHours || isOpenAt(options, now)) return;
+  const next = nextOpening(options, now);
+  const opens = next ? ` Abrimos ${describeOpening(next, now)}`.replace(/\.?$/, '.') : '';
+  const tail = options.enabled ? ' Puedes programar tu pedido para cuando estemos abiertos.' : ' Haz tu pedido dentro de nuestro horario de atención.';
+  throw new BadRequestException(`La tienda está cerrada en este momento.${opens}${tail}`);
 }

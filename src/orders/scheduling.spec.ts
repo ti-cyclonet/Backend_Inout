@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
+import { assertOpenForAsap, assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, describeOpening, formatHour, isOpenAt, nextOpening, resolveScheduling } from './scheduling';
 
 // Lunes 28/09/2026 10:00 en Colombia = 15:00 UTC
 const now = new Date('2026-09-28T15:00:00Z');
@@ -81,5 +81,57 @@ describe('assertSlotAvailable', () => {
       now, earliestReadyAt: bogotaToUtc('2026-10-05', 12 * 60),
     })).toThrow(/no alcanza/);
     expect(() => assertSlotAvailable('mañana', opts, { now })).toThrow(BadRequestException);
+  });
+});
+
+describe('horario de atención', () => {
+  // Lunes a sábado 18:30–22:00; domingo cerrado
+  const store = resolveScheduling({
+    enabled: false,
+    onlyDuringHours: true,
+    hours: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, active: day !== 0, open: '18:30', close: '22:00' })),
+  });
+  const at = (iso: string) => new Date(iso);
+
+  it('onlyDuringHours es falso por defecto', () => {
+    expect(resolveScheduling(null).onlyDuringHours).toBe(false);
+  });
+
+  it('abierta dentro de la franja y cerrada fuera (hora de Colombia)', () => {
+    // Lunes 28/09 19:00 Bogotá = 29/09 00:00 UTC
+    expect(isOpenAt(store, at('2026-09-29T00:00:00Z'))).toBe(true);
+    // Lunes 10:00 Bogotá
+    expect(isOpenAt(store, at('2026-09-28T15:00:00Z'))).toBe(false);
+    // 22:00 en punto ya cerró
+    expect(isOpenAt(store, at('2026-09-29T03:00:00Z'))).toBe(false);
+    // Domingo 27/09 19:00 Bogotá
+    expect(isOpenAt(store, at('2026-09-28T00:00:00Z'))).toBe(false);
+  });
+
+  it('próxima apertura: hoy más tarde, mañana o el próximo día activo', () => {
+    const lunesManana = at('2026-09-28T15:00:00Z');
+    expect(describeOpening(nextOpening(store, lunesManana)!, lunesManana)).toBe('hoy a las 6:30 p. m.');
+    const lunesNoche = at('2026-09-29T04:00:00Z'); // lunes 23:00
+    expect(describeOpening(nextOpening(store, lunesNoche)!, lunesNoche)).toBe('mañana a las 6:30 p. m.');
+    const sabadoNoche = at('2026-10-04T04:00:00Z'); // sábado 03/10 23:00 → domingo cerrado
+    expect(describeOpening(nextOpening(store, sabadoNoche)!, sabadoNoche)).toBe('el lunes a las 6:30 p. m.');
+  });
+
+  it('rechaza un pedido inmediato con la tienda cerrada y dice cuándo abre', () => {
+    expect(() => assertOpenForAsap(store, at('2026-09-28T15:00:00Z'))).toThrow(
+      'La tienda está cerrada en este momento. Abrimos hoy a las 6:30 p. m. Haz tu pedido dentro de nuestro horario de atención.',
+    );
+    expect(() => assertOpenForAsap({ ...store, enabled: true }, at('2026-09-28T15:00:00Z'))).toThrow(/Puedes programar tu pedido/);
+    expect(() => assertOpenForAsap(store, at('2026-09-29T00:00:00Z'))).not.toThrow();
+  });
+
+  it('sin la restricción acepta pedidos a cualquier hora', () => {
+    expect(() => assertOpenForAsap({ ...store, onlyDuringHours: false }, at('2026-09-28T15:00:00Z'))).not.toThrow();
+  });
+
+  it('formatHour', () => {
+    expect(formatHour('00:15')).toBe('12:15 a. m.');
+    expect(formatHour('12:00')).toBe('12:00 p. m.');
+    expect(formatHour('08:05')).toBe('8:05 a. m.');
   });
 });
