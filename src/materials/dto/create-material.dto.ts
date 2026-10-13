@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsNumber, IsBoolean, Min, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNumber, IsBoolean, Min, Max, MaxLength } from 'class-validator';
 
 export class CreateMaterialDto {
   @IsString()
@@ -73,6 +73,13 @@ export class CreateMaterialDto {
   @IsOptional()
   @Min(0)
   fltSalePrice?: number;
+
+  /** Margen propio (sobre el costo, 0–1000 %); null o vacío = heredar. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  fltMarginPercent?: number | null;
 
   @IsInt()
   @IsOptional()

@@ -22,6 +22,10 @@ export class Category {
   @Column({ type: 'varchar', default: 'active' })
   status: string;
 
+  /** Margen de ganancia propio (sobre el costo). null = usar el de el período (ver common/pricing-margin.ts). */
+  @Column({ type: 'decimal', precision: 7, scale: 2, nullable: true })
+  fltMarginPercent: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

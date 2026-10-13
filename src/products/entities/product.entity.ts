@@ -68,6 +68,10 @@ export class Product {
   @Column({ type: 'int', nullable: true })
   intProductionLeadHours: number | null;
 
+  /** Margen de ganancia propio (sobre el costo). null = usar el de su categoría o el del período (ver common/pricing-margin.ts). */
+  @Column({ type: 'decimal', precision: 7, scale: 2, nullable: true })
+  fltMarginPercent: number | null;
+
   /** Producto "para armar": listas de la carta de las que el cliente escoge
    * en la tienda (ej. 2 proteínas). Ver products/product-choices.ts. */
   @Column({ type: 'json', nullable: true })
