@@ -13,6 +13,8 @@ import { CustomersService } from '../customers/customers.service';
 import { Receivable, ReceivableStatus } from '../credit/entities/receivable.entity';
 import { DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, num, saleAt, salesSinceParams } from './panel-utils';
 import { ACTIVE_ORDER, SOLD_ORDER, orderSoldAt, saleTotal } from './dashboard.service';
+import { BusinessParamsService } from '../config/business-params.service';
+import { actualMargin, effectiveMargin, priceWithMargin } from '../common/pricing-margin';
 
 const available = (qty: any, reserved: any) => num(qty) - num(reserved);
 
@@ -49,6 +51,7 @@ export class ModulePanelsService {
     @InjectRepository(Order) private orders: Repository<Order>,
     private readonly customersService: CustomersService,
     @InjectRepository(Receivable) private receivables: Repository<Receivable>,
+    private readonly businessParams: BusinessParamsService,
   ) {}
 
   /** Ventas directas + pedidos vendidos desde `from`. */
@@ -183,7 +186,19 @@ export class ModulePanelsService {
       .filter((p) => !p.blnMadeToOrder && num(p.ingStockMin) > 0 && available(p.ingQuantity, p.ingReservedStock) < num(p.ingStockMin))
       .map((p) => ({ id: p.strId, name: p.strName, stock: available(p.ingQuantity, p.ingReservedStock), min: num(p.ingStockMin) }));
     const out = products.filter((p) => !p.blnMadeToOrder && available(p.ingQuantity, p.ingReservedStock) <= 0);
-    const lowMargin = priced.filter((p) => margin(p) < 0.15).map((p) => ({ id: p.strId, name: p.strName, margin: Math.round(margin(p) * 100) }));
+    // Bajo su margen objetivo (el del producto, su categoría o el período), sobre el costo
+    const [periodMargin, catRows] = await Promise.all([
+      this.businessParams.getParam(tenantId, 'PORCENTAJE_GANANCIA').catch(() => 0),
+      this.products.manager.query(`SELECT id, "fltMarginPercent" FROM manufacturing.categories WHERE "tenantId" = $1`, [tenantId]).catch(() => []),
+    ]);
+    const catMargin = new Map<number, unknown>((catRows || []).map((r: any) => [Number(r.id), r.fltMarginPercent]));
+    const lowMargin = priced
+      .map((p) => {
+        const target = effectiveMargin({ item: p.fltMarginPercent, category: catMargin.get(Number(p.intCategoryId)), period: periodMargin }).percent;
+        return { p, target, below: num(p.fltPrice) + 0.5 < priceWithMargin(num(p.fltCost), target) };
+      })
+      .filter((x) => x.below)
+      .map(({ p, target }) => ({ id: p.strId, name: p.strName, margin: actualMargin(num(p.fltPrice), num(p.fltCost)) ?? 0, target }));
     const noSales = products.filter((p) => !soldIds30.has(p.strId));
     const producedMonth = productions.filter((p) => p.dtmCreationDate >= monthStart);
 

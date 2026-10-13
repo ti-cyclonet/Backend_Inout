@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CompositionTwoDto {
@@ -91,4 +91,11 @@ export class CreateProductDto {
   @IsArray()
   @IsOptional()
   jsonChoiceGroups?: { block: string; min: number; max: number }[];
+
+  /** Margen propio (sobre el costo, 0–1000 %); null o vacío = heredar. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  fltMarginPercent?: number | null;
 }

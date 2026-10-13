@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { effectiveMargin, priceWithMargin } from '../common/pricing-margin';
 
 /** Valor de un parámetro Sí/No (dataType 'boolean'): "SI", "Sí", "true", "1"… */
 export function parseBooleanParam(value: unknown): boolean {
@@ -16,7 +17,10 @@ const PLAN_COST_TTL_MS = 10 * 60 * 1000;
  * 
  * Parámetros disponibles:
  * - IVA_PORCENTAJE: % de IVA (default 0)
- * - PORCENTAJE_GANANCIA: % de margen de ganancia (default 0)
+ * - PORCENTAJE_GANANCIA: % de margen de ganancia (default 0). Es el margen del
+ *   período: cada categoría, producto o material de reventa puede tener el suyo
+ * - MARGEN_MINIMO: % mínimo sobre el costo por debajo del cual no se puede vender
+ *   (default 0 = no vender bajo costo)
  * - PORCENTAJE_DESCUENTO_MAX: % máximo de descuento (default 100)
  * - PORCENTAJE_DESCUENTO: % de descuento que se aplica automáticamente a las ventas (default 0)
  * - PENALIZACION_MORA: % de penalización por mora (default 0)
@@ -38,6 +42,7 @@ export class BusinessParamsService {
     IVA_PORCENTAJE_REDUCIDO: 0,
     INC_PORCENTAJE: 0,
     PORCENTAJE_GANANCIA: 0,
+    MARGEN_MINIMO: 0,
     PORCENTAJE_DESCUENTO_MAX: 100,
     PORCENTAJE_DESCUENTO: 0,
     PENALIZACION_MORA: 0,
@@ -141,11 +146,12 @@ export class BusinessParamsService {
   }
 
   /**
-   * Calcula el precio de venta sugerido basado en costo + margen de ganancia.
+   * Precio de venta sugerido: costo + margen. El margen es el del producto si
+   * lo tiene; si no, el de su categoría; si no, el del período.
    */
-  async calculateSuggestedPrice(tenantId: string, cost: number): Promise<number> {
-    const marginPercent = await this.getParam(tenantId, 'PORCENTAJE_GANANCIA');
-    return cost * (1 + marginPercent / 100);
+  async calculateSuggestedPrice(tenantId: string, cost: number, levels: { item?: number | null; category?: number | null } = {}): Promise<number> {
+    const period = await this.getParam(tenantId, 'PORCENTAJE_GANANCIA');
+    return priceWithMargin(cost, effectiveMargin({ item: levels.item, category: levels.category, period }).percent);
   }
 
   /**
