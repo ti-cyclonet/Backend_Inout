@@ -40,6 +40,13 @@ export class CreateMaterialTDto {
   @IsOptional()
   strDischargeUnit?: string;
 
+  /** Unidades que trae cada paquete o caja (null = no aplica). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  intPackSize?: number | null;
+
   @IsString()
   @IsOptional()
   dtmCreationDate?: string;
