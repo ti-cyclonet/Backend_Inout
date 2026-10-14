@@ -12,6 +12,7 @@ import { BusinessParamsService } from '../config/business-params.service';
 import { storeInfoFrom, validateStoreInfo } from './store-info';
 import { MENU_EXTRA_IMAGE_MAX_BYTES, resolveMenuExtras } from './menu-extras';
 import { resolveGiftCardOptions, validateGiftCardOptions } from '../orders/gift-cards/gift-cards';
+import { HOME_THEMES, canEditHomeTheme, isHomeTheme } from './home/home-theme';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -20,6 +21,31 @@ export class MarketplaceConfigController {
     private readonly statsService: MarketplaceStatsService,
     private readonly businessParamsService: BusinessParamsService,
   ) {}
+
+  /** Público: tema de la vitrina CycloNet Market. */
+  @Get('home/theme')
+  async getHomeTheme() {
+    return { displayMode: await this.marketplaceConfigService.getHomeTheme() };
+  }
+
+  /** ¿El usuario puede cambiar el tema de la vitrina? (cuenta de CycloNet). */
+  @Get('home/theme/permissions')
+  @UseGuards(JwtAuthGuard)
+  getHomeThemePermissions(@Request() req) {
+    return { canEdit: canEditHomeTheme(req.user?.tenantId), themes: HOME_THEMES };
+  }
+
+  @Patch('home/theme')
+  @UseGuards(JwtAuthGuard)
+  async updateHomeTheme(@Body() body: any, @Request() req) {
+    if (!canEditHomeTheme(req.user?.tenantId)) {
+      throw new ForbiddenException('Solo la cuenta de CycloNet puede cambiar el tema de CycloNet Market');
+    }
+    if (!isHomeTheme(body?.displayMode)) {
+      throw new BadRequestException(`Tema no válido. Usa: ${HOME_THEMES.join(', ')}`);
+    }
+    return { displayMode: await this.marketplaceConfigService.setHomeTheme(body.displayMode) };
+  }
 
   /**
    * Público: nombre de la tienda para el título del navegador. Es el parámetro
