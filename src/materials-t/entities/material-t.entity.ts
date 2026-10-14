@@ -35,6 +35,10 @@ export class MaterialT {
   @Column({ type: 'varchar', length: 50, nullable: false, default: '' })
   strDischargeUnit: string;
 
+  /** Unidades que trae cada paquete o caja (ej. 5, 28, 100), si se mide o descarga en paquetes/cajas. */
+  @Column({ type: 'int', nullable: true })
+  intPackSize: number | null;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
 

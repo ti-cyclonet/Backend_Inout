@@ -18,7 +18,7 @@ import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { validate as isUUID } from 'uuid';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
-import { areUnitsCompatible } from 'src/common/utils/unit-conversion';
+import { areUnitsCompatible, normalizePackSize, packSizeFor, unitMismatchMessage } from 'src/common/utils/unit-conversion';
 import { assertResaleConfig } from '../common/resale';
 import { OpeningBalanceService } from '../inventory-movements/opening-balance.service';
 import { openingFromMaterialRow } from '../inventory-movements/opening-balance';
@@ -53,10 +53,9 @@ export class MaterialsService {
       // Validar que la unidad de descarga (si es distinta a la de medida)
       // sea del mismo tipo: no tiene sentido medir en "kg" y descargar en
       // "units", porque no hay forma de convertir entre ellas.
-      if (!areUnitsCompatible(createMaterialDto.strUnitMeasure, createMaterialDto.strDischargeUnit)) {
-        throw new BadRequestException(
-          `La unidad de descarga ("${createMaterialDto.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${createMaterialDto.strUnitMeasure}") para poder convertir entre ellas.`,
-        );
+      createMaterialDto.intPackSize = packSizeFor(createMaterialDto.strUnitMeasure, createMaterialDto.strDischargeUnit, createMaterialDto.intPackSize);
+      if (!areUnitsCompatible(createMaterialDto.strUnitMeasure, createMaterialDto.strDischargeUnit, createMaterialDto.intPackSize)) {
+        throw new BadRequestException(unitMismatchMessage(createMaterialDto.strUnitMeasure, createMaterialDto.strDischargeUnit));
       }
       assertResaleConfig(createMaterialDto);
 
@@ -257,10 +256,9 @@ export class MaterialsService {
         throw new NotFoundException(`Material con id '${id}' no encontrado`);
       }
 
-      if (!areUnitsCompatible(material.strUnitMeasure, material.strDischargeUnit)) {
-        throw new BadRequestException(
-          `La unidad de descarga ("${material.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${material.strUnitMeasure}") para poder convertir entre ellas.`,
-        );
+      material.intPackSize = packSizeFor(material.strUnitMeasure, material.strDischargeUnit, material.intPackSize);
+      if (!areUnitsCompatible(material.strUnitMeasure, material.strDischargeUnit, material.intPackSize)) {
+        throw new BadRequestException(unitMismatchMessage(material.strUnitMeasure, material.strDischargeUnit));
       }
       assertResaleConfig(material);
 
@@ -581,6 +579,7 @@ export class MaterialsService {
             fltPrice: parseFloat(row['Precio']) || 0,
             strUnitMeasure: this.normalizeUnit(row['Unidad Medida*']),
             strDischargeUnit: this.normalizeUnit(row['Unidad Descarga*']),
+            intPackSize: normalizePackSize(row['Unidades por Paquete'] ?? row['Unidades por paquete']),
             ingMaxStock: parseInt(row['Stock Máximo*']) || 0,
             ingMinStock: parseInt(row['Stock Mínimo*']) || 0,
             ingQuantity: 0,

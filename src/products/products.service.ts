@@ -361,7 +361,7 @@ export class ProductsService {
         // pero el stock (ingQuantity) vive en su unidad de MEDIDA (ej. kg).
         const quantity = parseFloat(comp.fltQuantity.toString());
         const dischargeUnit = material.strDischargeUnit || material.strUnitMeasure;
-        const quantityInStockUnit = convertUnits(quantity, dischargeUnit, material.strUnitMeasure);
+        const quantityInStockUnit = convertUnits(quantity, dischargeUnit, material.strUnitMeasure, material.intPackSize);
 
         ingredients.push({
           name: material.strName,
@@ -391,7 +391,7 @@ export class ProductsService {
       if (transformedMaterial) {
         const quantity = parseFloat(comp.fltQuantity.toString());
         const dischargeUnit = (transformedMaterial as any).strDischargeUnit || transformedMaterial.strUnitMeasure;
-        const quantityInStockUnit = convertUnits(quantity, dischargeUnit, transformedMaterial.strUnitMeasure);
+        const quantityInStockUnit = convertUnits(quantity, dischargeUnit, transformedMaterial.strUnitMeasure, (transformedMaterial as any).intPackSize);
 
         ingredients.push({
           name: transformedMaterial.strName,
@@ -499,11 +499,11 @@ export class ProductsService {
 
         // Obtener precio y unidades del material para convertir y registrar el movimiento
         const material = await queryRunner.manager.query(
-          `SELECT "fltPrice", "strUnitMeasure", "strDischargeUnit" FROM manufacturing.materials WHERE "strId" = $1`,
+          `SELECT "fltPrice", "strUnitMeasure", "strDischargeUnit", "intPackSize" FROM manufacturing.materials WHERE "strId" = $1`,
           [comp.strMaterialId]
         );
         const dischargeUnit = material[0]?.strDischargeUnit || material[0]?.strUnitMeasure;
-        const totalNeededInStockUnit = convertUnits(totalNeeded, dischargeUnit, material[0]?.strUnitMeasure);
+        const totalNeededInStockUnit = convertUnits(totalNeeded, dischargeUnit, material[0]?.strUnitMeasure, material[0]?.intPackSize);
 
         await queryRunner.manager.query(
           `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
@@ -538,11 +538,11 @@ export class ProductsService {
         const totalNeeded = parseFloat(comp.fltQuantity.toString()) * parseFloat(quantity);
 
         const transformedMaterial = await queryRunner.manager.query(
-          `SELECT "fltPrice", "strUnitMeasure", "strDischargeUnit" FROM manufacturing."materials-t" WHERE "strId" = $1`,
+          `SELECT "fltPrice", "strUnitMeasure", "strDischargeUnit", "intPackSize" FROM manufacturing."materials-t" WHERE "strId" = $1`,
           [comp.strTransformedMaterialId]
         );
         const dischargeUnit = transformedMaterial[0]?.strDischargeUnit || transformedMaterial[0]?.strUnitMeasure;
-        const totalNeededInStockUnit = convertUnits(totalNeeded, dischargeUnit, transformedMaterial[0]?.strUnitMeasure);
+        const totalNeededInStockUnit = convertUnits(totalNeeded, dischargeUnit, transformedMaterial[0]?.strUnitMeasure, transformedMaterial[0]?.intPackSize);
 
         await queryRunner.manager.query(
           `UPDATE manufacturing."materials-t" SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,

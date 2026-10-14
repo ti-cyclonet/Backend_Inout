@@ -19,7 +19,7 @@ import {
   import { validate as isUUID } from 'uuid';
   import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
   import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
-  import { areUnitsCompatible, convertUnits } from 'src/common/utils/unit-conversion';
+  import { areUnitsCompatible, convertUnits, packSizeFor, unitMismatchMessage } from 'src/common/utils/unit-conversion';
   import { assertResaleConfig } from '../common/resale';
   
   @Injectable()
@@ -54,10 +54,9 @@ import {
   
     async create(createMaterialDto: CreateMaterialTDto, tenantId: string) {
       const anyDto = createMaterialDto as any;
-      if (!areUnitsCompatible(anyDto.strUnitMeasure, anyDto.strDischargeUnit)) {
-        throw new BadRequestException(
-          `La unidad de descarga ("${anyDto.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${anyDto.strUnitMeasure}") para poder convertir entre ellas.`,
-        );
+      anyDto.intPackSize = packSizeFor(anyDto.strUnitMeasure, anyDto.strDischargeUnit, anyDto.intPackSize);
+      if (!areUnitsCompatible(anyDto.strUnitMeasure, anyDto.strDischargeUnit, anyDto.intPackSize)) {
+        throw new BadRequestException(unitMismatchMessage(anyDto.strUnitMeasure, anyDto.strDischargeUnit));
       }
       assertResaleConfig(anyDto);
 
@@ -152,7 +151,7 @@ import {
             // descontar para que "15 g" no le reste 15 kg a un material que
             // se compra en kilos.
             const dischargeUnit = componentMaterial?.strDischargeUnit || componentMaterial?.strUnitMeasure;
-            const quantityInStockUnit = convertUnits(comp.quantity, dischargeUnit, componentMaterial?.strUnitMeasure);
+            const quantityInStockUnit = convertUnits(comp.quantity, dischargeUnit, componentMaterial?.strUnitMeasure, componentMaterial?.intPackSize);
 
             await queryRunner.manager.query(
               `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
@@ -304,10 +303,9 @@ import {
           throw new NotFoundException(`Material con id '${id}' no encontrado`);
         }
 
-        if (!areUnitsCompatible(material.strUnitMeasure, material.strDischargeUnit)) {
-          throw new BadRequestException(
-            `La unidad de descarga ("${material.strDischargeUnit}") debe ser del mismo tipo que la unidad de medida ("${material.strUnitMeasure}") para poder convertir entre ellas.`,
-          );
+        material.intPackSize = packSizeFor(material.strUnitMeasure, material.strDischargeUnit, material.intPackSize);
+        if (!areUnitsCompatible(material.strUnitMeasure, material.strDischargeUnit, material.intPackSize)) {
+          throw new BadRequestException(unitMismatchMessage(material.strUnitMeasure, material.strDischargeUnit));
         }
         assertResaleConfig(material);
 
@@ -387,7 +385,7 @@ import {
                 // additionalQty está en la unidad de DESCARGA del componente; convertir
                 // a su unidad de MEDIDA (la del stock) antes de descontar.
                 const dischargeUnit = componentMaterial?.strDischargeUnit || componentMaterial?.strUnitMeasure;
-                const additionalQtyInStockUnit = convertUnits(additionalQty, dischargeUnit, componentMaterial?.strUnitMeasure);
+                const additionalQtyInStockUnit = convertUnits(additionalQty, dischargeUnit, componentMaterial?.strUnitMeasure, componentMaterial?.intPackSize);
 
                 await queryRunner.manager.query(
                   `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
