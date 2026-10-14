@@ -192,12 +192,19 @@ export class ProductsService {
    * con su tenant para que el front los agrupe/filtre por sector. Imágenes en
    * una sola consulta (antes era una por producto).
    */
+  /**
+   * Vitrina general (/marketplace/home): productos y materiales / materiales
+   * compuestos de reventa que cada tienda marcó visibles en su propio
+   * formulario («Mostrar en el catálogo del MarketPlace»). Antes solo traía
+   * productos y los materiales de reventa no aparecían.
+   */
   async findMarketplaceHome(maxItems = 500) {
     const products = await this.productRepository.find({
       where: { blnMarketplaceVisible: true },
       order: { strName: 'ASC' },
       take: maxItems,
     });
+    const resale = await this.findResaleAcrossTenants(maxItems);
     const ids = products.map((p) => p.strId);
     const images = ids.length
       ? await this.imageRepository.find({
@@ -210,10 +217,33 @@ export class ProductsService {
       list.push({ strId: img.strId, strImageUrl: img.strImageUrl });
       byProduct.set(img.strEntityId, list);
     }
-    return {
-      data: products.map((p) => ({ ...p, images: byProduct.get(p.strId) || [] })),
-      total: products.length,
+    const data = [...products.map((p) => ({ ...p, itemType: 'product', images: byProduct.get(p.strId) || [] })), ...resale];
+    return { data, total: data.length };
+  }
+
+  /** Reventa visible en el MarketPlace de todas las tiendas, con sus imágenes (una consulta por tipo). */
+  private async findResaleAcrossTenants(maxItems: number) {
+    const where = { blnForResale: true, blnMarketplaceVisible: true } as any;
+    const [materials, materialsT] = await Promise.all([
+      this.materialRepository.find({ where, order: { strName: 'ASC' }, take: maxItems }),
+      this.dataSource.getRepository(MaterialT).find({ where, order: { strName: 'ASC' }, take: maxItems }),
+    ]);
+    const isActive = (m: { strStatus?: string }) => (m.strStatus || 'active').toLowerCase() === 'active';
+    const imagesOf = async (ids: string[], entityType: string) => {
+      const rows = ids.length
+        ? await this.imageRepository.find({ where: { strEntityId: In(ids), strEntityType: entityType, strStatus: 'active' } })
+        : [];
+      const map = new Map<string, { strId: string; strImageUrl: string }[]>();
+      for (const r of rows) map.set(r.strEntityId, [...(map.get(r.strEntityId) || []), { strId: r.strId, strImageUrl: r.strImageUrl }]);
+      return map;
     };
+    const mats = materials.filter(isActive);
+    const matsT = materialsT.filter(isActive);
+    const [imgM, imgT] = await Promise.all([imagesOf(mats.map((m) => m.strId), 'material'), imagesOf(matsT.map((m) => m.strId), 'material-t')]);
+    return [
+      ...mats.map((m) => mapResaleItem(m, 'material', imgM.get(m.strId) || [])),
+      ...matsT.map((m) => mapResaleItem(m, 'material_t', imgT.get(m.strId) || [])),
+    ];
   }
 
   async findAll(tenantId: string, page: number = 1, limit: number = 10) {
