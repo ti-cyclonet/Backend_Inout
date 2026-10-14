@@ -2,6 +2,8 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MarketplaceConfig } from './entities/marketplace-config.entity';
+import { PlatformSetting } from './entities/platform-setting.entity';
+import { HOME_THEME_KEY, isHomeTheme } from './home/home-theme';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
 import { StoreInfo, storeInfoFrom } from './store-info';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
@@ -12,6 +14,8 @@ export class MarketplaceConfigService {
   constructor(
     @InjectRepository(MarketplaceConfig)
     private readonly marketplaceConfigRepository: Repository<MarketplaceConfig>,
+    @InjectRepository(PlatformSetting)
+    private readonly platformSettings: Repository<PlatformSetting>,
     private readonly cloudinary: CloudinaryService,
   ) {}
 
@@ -135,6 +139,17 @@ export class MarketplaceConfigService {
     if (file.size > MENU_EXTRA_IMAGE_MAX_BYTES) throw new BadRequestException('La imagen no puede pesar más de 3 MB.');
     const uploaded = await this.cloudinary.uploadImageFromBuffer(file.buffer, `inout/tenants/${tenantId}/menu`);
     return { imageUrl: uploaded.secure_url, imagePublicId: uploaded.public_id };
+  }
+
+  /** Tema de la vitrina CycloNet Market ('grid' si no se ha elegido). */
+  async getHomeTheme(): Promise<string> {
+    const row = await this.platformSettings.findOne({ where: { key: HOME_THEME_KEY } });
+    return isHomeTheme(row?.value) ? row!.value : 'grid';
+  }
+
+  async setHomeTheme(displayMode: string): Promise<string> {
+    await this.platformSettings.save({ key: HOME_THEME_KEY, value: displayMode });
+    return displayMode;
   }
 
   async getConfig(tenantId: string): Promise<MarketplaceConfig | null> {
