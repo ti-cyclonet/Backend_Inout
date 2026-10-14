@@ -47,6 +47,7 @@ export function mapResaleItem(material: any, itemType: 'material' | 'material_t'
   const availableUnits = factor > 0 ? Math.max(0, Math.floor(available / factor)) : 0;
   return {
     strId: material.strId,
+    strTenantId: material.strTenantId,
     itemType,
     strCode: material.strCode,
     strName: `${material.strName} - ${material.strSalePresentation}`,

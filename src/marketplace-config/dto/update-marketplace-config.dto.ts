@@ -8,9 +8,11 @@ export class UpdateMarketplaceConfigDto {
   @IsString()
   tenantId: string;
 
+  /** Ya no se edita en la tienda (la visibilidad va en cada producto); se conserva por compatibilidad. */
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  selectedProductIds: string[];
+  selectedProductIds?: string[];
 
   @IsOptional()
   @IsString()

@@ -1,9 +1,10 @@
-import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MarketplaceConfig } from './entities/marketplace-config.entity';
 import { PlatformSetting } from './entities/platform-setting.entity';
 import { HOME_THEME_KEY, isHomeTheme } from './home/home-theme';
+import { isReservedSlug } from './home/reserved-slugs';
 import { UpdateMarketplaceConfigDto } from './dto/update-marketplace-config.dto';
 import { StoreInfo, storeInfoFrom } from './store-info';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
@@ -19,13 +20,29 @@ export class MarketplaceConfigService {
     private readonly cloudinary: CloudinaryService,
   ) {}
 
+  /**
+   * Configuración de la tienda; si aún no existe se crea (con su slug). Antes
+   * había que guardar primero los "productos visibles" y los demás ajustes
+   * respondían 404; la visibilidad ahora se decide en cada producto o material.
+   */
+  async configFor(tenantId: string): Promise<MarketplaceConfig> {
+    const existing = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
+    if (existing) return existing;
+    return this.marketplaceConfigRepository.save(this.marketplaceConfigRepository.create({
+      tenantId,
+      selectedProductIds: [],
+      displayMode: 'grid',
+      slug: await this.generateSlug(tenantId),
+    }));
+  }
+
   async updateConfig(dto: UpdateMarketplaceConfigDto): Promise<MarketplaceConfig> {
     let config = await this.marketplaceConfigRepository.findOne({
       where: { tenantId: dto.tenantId },
     });
 
     if (config) {
-      config.selectedProductIds = dto.selectedProductIds;
+      if (dto.selectedProductIds) config.selectedProductIds = dto.selectedProductIds;
       // Update displayMode if provided
       if (dto.displayMode) {
         config.displayMode = dto.displayMode;
@@ -39,7 +56,7 @@ export class MarketplaceConfigService {
       const slug = (dto as any).slug || await this.generateSlug(dto.tenantId);
       config = this.marketplaceConfigRepository.create({
         tenantId: dto.tenantId,
-        selectedProductIds: dto.selectedProductIds,
+        selectedProductIds: dto.selectedProductIds || [],
         displayMode: dto.displayMode || 'grid',
         slug,
       });
@@ -50,10 +67,7 @@ export class MarketplaceConfigService {
 
   /** Guarda las formas de pago (ya normalizadas con resolvePaymentOptions). */
   async updatePaymentOptions(tenantId: string, paymentOptions: Record<string, any>) {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego sus formas de pago.');
-    }
+    const config = await this.configFor(tenantId);
     config.paymentOptions = paymentOptions;
     await this.marketplaceConfigRepository.save(config);
     return paymentOptions;
@@ -62,30 +76,21 @@ export class MarketplaceConfigService {
   /** Guarda la programación de pedidos (ya normalizada con resolveScheduling). */
   /** Formas de entrega (ya validadas con validateDeliveryOptions). */
   async updateGiftCards(tenantId: string, options: Record<string, any>) {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego los bonos de regalo.');
-    }
+    const config = await this.configFor(tenantId);
     config.giftCards = options;
     await this.marketplaceConfigRepository.save(config);
     return options;
   }
 
   async updateDeliveryOptions(tenantId: string, options: Record<string, any>) {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego sus formas de entrega.');
-    }
+    const config = await this.configFor(tenantId);
     config.deliveryOptions = options;
     await this.marketplaceConfigRepository.save(config);
     return options;
   }
 
   async updateScheduling(tenantId: string, scheduling: Record<string, any>) {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego sus pedidos programados.');
-    }
+    const config = await this.configFor(tenantId);
     config.scheduling = scheduling;
     await this.marketplaceConfigRepository.save(config);
     return scheduling;
@@ -93,10 +98,7 @@ export class MarketplaceConfigService {
 
   /** Guarda los textos de agradecimiento (ya normalizados con resolveThanksMessages). */
   async updateThanksMessages(tenantId: string, thanksMessages: Record<string, any>) {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego el mensaje de agradecimiento.');
-    }
+    const config = await this.configFor(tenantId);
     config.thanksMessages = thanksMessages;
     await this.marketplaceConfigRepository.save(config);
     return thanksMessages;
@@ -104,10 +106,7 @@ export class MarketplaceConfigService {
 
   /** WhatsApp y mensaje de bienvenida (ya validados). Vacío se guarda como null. */
   async updateStoreInfo(tenantId: string, info: StoreInfo): Promise<StoreInfo> {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego los datos de la tienda.');
-    }
+    const config = await this.configFor(tenantId);
     config.whatsapp = info.whatsapp || null;
     config.welcomeMessage = info.welcomeMessage || null;
     await this.marketplaceConfigRepository.save(config);
@@ -116,10 +115,7 @@ export class MarketplaceConfigService {
 
   /** Información de la carta (ya normalizada). Borra de Cloudinary las fotos que se quitaron. */
   async updateMenuExtras(tenantId: string, extras: MenuExtras): Promise<MenuExtras> {
-    const config = await this.marketplaceConfigRepository.findOne({ where: { tenantId } });
-    if (!config) {
-      throw new NotFoundException('Primero configura tu MarketPlace (productos visibles) y luego la información de la carta.');
-    }
+    const config = await this.configFor(tenantId);
     const before = resolveMenuExtras(config.menuExtras);
     config.menuExtras = extras;
     await this.marketplaceConfigRepository.save(config);
@@ -192,6 +188,9 @@ export class MarketplaceConfigService {
   }
 
   private async validateSlug(slug: string, excludeId?: string): Promise<void> {
+    if (isReservedSlug(slug)) {
+      throw new ConflictException(`"${slug}" está reservado para CycloNet Market. Elige otro nombre para tu tienda.`);
+    }
     const existing = await this.marketplaceConfigRepository.findOne({ where: { slug } });
     if (existing && existing.id !== excludeId) {
       throw new ConflictException('Este nombre de tienda ya está en uso. Elige otro.');
@@ -221,7 +220,7 @@ export class MarketplaceConfigService {
         if (businessName) {
           const slug = this.normalizeSlug(businessName);
           const existing = await this.marketplaceConfigRepository.findOne({ where: { slug } });
-          if (!existing) return slug;
+          if (!existing && !isReservedSlug(slug)) return slug;
           return `${slug}-${Date.now().toString(36).slice(-4)}`;
         }
       }
