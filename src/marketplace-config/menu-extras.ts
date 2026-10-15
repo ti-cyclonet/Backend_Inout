@@ -1,6 +1,6 @@
 /**
  * Información de la carta del MarketPlace (no son productos): bloques como
- * "Proteínas" o "Salsas" con sus renglones (nombre, nota y foto opcionales),
+ * "Proteínas" o "Salsas" con sus renglones (nombre, nota, precio y foto opcionales),
  * subtítulo de la carta, zonas de domicilio y el aviso "solo domicilios"
  * (cocina oculta). La tienda lo configura en el modo administrador; la carta
  * y el encabezado de la tienda lo muestran. Funciones puras.
@@ -10,6 +10,8 @@ export interface MenuExtraItem {
   name: string;
   /** "tradicional", "especial de la casa"… */
   note: string;
+  /** Valor adicional en pesos (enteros) que suma al producto cuando se escoge; 0 = sin costo. */
+  price: number;
   /** Foto en Cloudinary (subida con POST /marketplace-config/:tenantId/menu-extras/image). */
   imageUrl: string | null;
   imagePublicId: string | null;
@@ -40,6 +42,7 @@ export const MENU_EXTRAS_LIMITS = {
   items: 20,
   itemName: 50,
   itemNote: 60,
+  itemPrice: 1_000_000,
 };
 
 /** Formatos y peso de las fotos de los renglones. */
@@ -53,9 +56,19 @@ const text = (value: unknown, max: number): string =>
 const cloudinaryUrl = (value: unknown): string | null =>
   typeof value === 'string' && /^https:\/\/res\.cloudinary\.com\/[^\s"'<>]+$/.test(value) ? value : null;
 
+/** Precio en pesos enteros dentro del tope; cualquier otra cosa = 0. */
+export const extraPrice = (value: unknown): number => {
+  const n = typeof value === 'string' ? Number(value.replace(/[^\d]/g, '')) : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), MENU_EXTRAS_LIMITS.itemPrice) : 0;
+};
+
+/** Nota que es solo un valor ("$3000", "+ $ 3.000"): antes el precio se escribía ahí. */
+const MONEY_NOTE = /^\+?\s*\$\s*\d{1,3}(?:[.,\s]?\d{3})*\s*(?:cop)?$/i;
+
 /**
  * Normaliza lo guardado (o lo enviado): recorta textos, aplica los límites y
  * descarta renglones sin nombre, bloques sin título ni renglones y zonas repetidas.
+ * Un renglón sin precio cuya nota es solo un valor ("$3000") toma ese precio.
  */
 export function resolveMenuExtras(raw: any): MenuExtras {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -81,9 +94,16 @@ export function resolveMenuExtras(raw: any): MenuExtras {
       const name = text(it.name, L.itemName);
       if (!name) continue;
       const imageUrl = cloudinaryUrl(it.imageUrl);
+      let note = text(it.note, L.itemNote);
+      let price = extraPrice(it.price);
+      if (!price && MONEY_NOTE.test(note)) {
+        price = extraPrice(note);
+        note = '';
+      }
       items.push({
         name,
-        note: text(it.note, L.itemNote),
+        note,
+        price,
         imageUrl,
         imagePublicId: imageUrl && typeof it.imagePublicId === 'string' ? it.imagePublicId.slice(0, 200) : null,
       });
