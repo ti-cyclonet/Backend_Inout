@@ -32,7 +32,7 @@ import {
   stageDueAt,
 } from './order-timing';
 import { FulfillmentResult, resolveDeliveryOptions, resolveFulfillment } from './delivery-options';
-import { validateLineChoices } from '../products/product-choices';
+import { choicesExtra, validateLineChoices } from '../products/product-choices';
 import { computeSaleProfit, SaleProfit } from '../common/sale-profit';
 import { GiftCardsService, StoreCustomer } from './gift-cards/gift-cards.service';
 import { depositWithGiftCards, isGiftCardLine } from './gift-cards/gift-cards';
@@ -86,6 +86,8 @@ export class OrdersService {
    * Productos "para armar": valida lo que escogió el cliente contra los grupos
    * del producto y las listas vigentes de la carta, y deja en la línea los
    * nombres de la carta. En productos sin opciones se descarta lo enviado.
+   * Las opciones con precio (adiciones) suman a la unidad, al subtotal y al
+   * total con el precio de la carta (no el del navegador).
    */
   private async applyLineChoices(createDto: CreateMarketplaceOrderDto): Promise<void> {
     const lines = (createDto.items || []).filter((l: any) => l?.productId && (l.itemType || 'product') === 'product');
@@ -112,6 +114,15 @@ export class OrdersService {
         : [];
       if (choices.length) line.choices = choices;
       else delete line.choices;
+      const extra = choicesExtra(choices);
+      if (extra > 0) {
+        const qty = Number(line.quantity) || 0;
+        line.unitPrice = (Number(line.unitPrice) || 0) + extra;
+        if (line.listPrice !== undefined) line.listPrice = (Number(line.listPrice) || 0) + extra;
+        line.subtotal = (Number(line.subtotal) || 0) + extra * qty;
+        createDto.subtotal = (Number(createDto.subtotal) || 0) + extra * qty;
+        createDto.total = (Number(createDto.total) || 0) + extra * qty;
+      }
     }
   }
 
