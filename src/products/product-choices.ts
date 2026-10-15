@@ -4,8 +4,9 @@ import { BadRequestException } from '@nestjs/common';
  * Productos "para armar": el cliente escoge en la tienda opciones de las
  * listas de la carta (bloques de menuExtras: "Proteínas", "Salsas"…). Ej. una
  * arepa combinada con 2 proteínas a elegir. El producto guarda los grupos
- * (jsonChoiceGroups) y cada línea del pedido lo elegido (choices). Las
- * opciones no cambian el precio. Funciones puras (product-choices.spec.ts).
+ * (jsonChoiceGroups) y cada línea del pedido lo elegido (choices). Una opción
+ * con precio en la carta ("Queso extra" $3.000) suma al precio de la unidad.
+ * Funciones puras (product-choices.spec.ts).
  */
 
 export interface ChoiceGroup {
@@ -21,6 +22,8 @@ export interface ChoiceGroup {
 export interface LineChoice {
   group: string;
   options: string[];
+  /** Valor adicional de cada opción (mismo orden); solo si alguna cuesta. */
+  prices?: number[];
 }
 
 export const CHOICE_LIMITS = { groups: 4, max: 10, block: 40 };
@@ -69,7 +72,7 @@ const howMany = (g: ChoiceGroup) =>
 export function validateLineChoices(
   productName: string,
   groups: ChoiceGroup[] | null | undefined,
-  blocks: { title: string; items: { name: string }[] }[],
+  blocks: { title: string; items: { name: string; price?: number }[] }[],
   raw: unknown,
 ): LineChoice[] {
   const sent = Array.isArray(raw) ? raw : [];
@@ -79,25 +82,46 @@ export function validateLineChoices(
     if (!block || !block.items.length) continue;
     const entry = sent.find((c: any) => typeof c?.group === 'string' && key(c.group) === key(block.title));
     const picked: string[] = [];
+    const prices: number[] = [];
     for (const o of Array.isArray(entry?.options) ? entry.options : []) {
       const item = typeof o === 'string' ? block.items.find((i) => key(i.name) === key(o)) : undefined;
       if (!item) throw new BadRequestException(`"${String(o)}" no es una opción de ${block.title} para ${productName}.`);
-      if (!picked.includes(item.name)) picked.push(item.name);
+      if (picked.includes(item.name)) continue;
+      picked.push(item.name);
+      prices.push(Math.max(0, Math.round(Number(item.price) || 0)));
     }
     const max = Math.min(g.max, block.items.length);
     const min = Math.min(g.min, max);
     if (picked.length < min || picked.length > max) {
       throw new BadRequestException(`${productName}: elige ${howMany({ ...g, min, max })} de ${block.title}.`);
     }
-    if (picked.length) result.push({ group: block.title, options: picked });
+    if (picked.length) result.push({ group: block.title, options: picked, ...(prices.some((p) => p > 0) ? { prices } : {}) });
   }
   return result;
 }
 
-/** Para mostrar: ["Proteínas: Pollo, Cerdo", "Salsas: Ajo"]. */
+/** Lo que suman las opciones escogidas a cada unidad. */
+export function choicesExtra(choices: unknown): number {
+  if (!Array.isArray(choices)) return 0;
+  return choices.reduce(
+    (sum: number, c: any) => sum + (Array.isArray(c?.prices) ? c.prices.reduce((s: number, p: any) => s + (Number(p) > 0 ? Number(p) : 0), 0) : 0),
+    0,
+  );
+}
+
+/** $3.000 (pesos, sin decimales). */
+const pesos = (n: number) => `$${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+
+/** Para mostrar: ["Proteínas: Pollo, Cerdo", "Adiciones: Queso (+$3.000)"]. */
 export function choicesText(choices: unknown): string[] {
   if (!Array.isArray(choices)) return [];
   return choices
     .filter((c: any) => c && typeof c.group === 'string' && Array.isArray(c.options) && c.options.length)
-    .map((c: any) => `${c.group}: ${c.options.join(', ')}`);
+    .map((c: any) => {
+      const opts = c.options.map((o: string, i: number) => {
+        const p = Array.isArray(c.prices) ? Number(c.prices[i]) : 0;
+        return p > 0 ? `${o} (+${pesos(p)})` : o;
+      });
+      return `${c.group}: ${opts.join(', ')}`;
+    });
 }

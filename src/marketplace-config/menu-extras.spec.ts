@@ -22,10 +22,35 @@ describe('menu-extras', () => {
       {
         title: 'Proteínas',
         items: [
-          { name: 'Chorizo', note: '', imageUrl: null, imagePublicId: null },
-          { name: 'Cerdo', note: 'de la casa', imageUrl: null, imagePublicId: null },
+          { name: 'Chorizo', note: '', price: 0, imageUrl: null, imagePublicId: null },
+          { name: 'Cerdo', note: 'de la casa', price: 0, imageUrl: null, imagePublicId: null },
         ],
       },
+    ]);
+  });
+
+  it('precio de las adiciones: entero, con tope, y tomado de una nota que es solo un valor', () => {
+    const r = resolveMenuExtras({
+      blocks: [{ title: 'Adiciones', items: [
+        { name: 'Queso', price: '3000' },
+        { name: 'Tocineta', price: 2500.4 },
+        { name: 'Huevo', note: '$3000' },
+        { name: 'Maduro', note: ' + $ 3.500 ' },
+        { name: 'Aguacate', note: '2 tajadas' },
+        { name: 'Gratis', price: -10 },
+        { name: 'Caro', price: 99_000_000 },
+        { name: 'Con ambos', price: 1000, note: '$2000' },
+      ] }],
+    });
+    expect(r.blocks[0].items.map((i) => [i.price, i.note])).toEqual([
+      [3000, ''],
+      [2500, ''],
+      [3000, ''],
+      [3500, ''],
+      [0, '2 tajadas'],
+      [0, ''],
+      [MENU_EXTRAS_LIMITS.itemPrice, ''],
+      [1000, '$2000'],
     ]);
   });
 
@@ -54,7 +79,7 @@ describe('menu-extras', () => {
   });
 
   it('removedImagePublicIds: las fotos que se quitaron', () => {
-    const withImg = (id: string) => ({ name: id, note: '', imageUrl: IMG, imagePublicId: id });
+    const withImg = (id: string) => ({ name: id, note: '', price: 0, imageUrl: IMG, imagePublicId: id });
     const before = { ...EMPTY_MENU_EXTRAS, blocks: [{ title: 'S', items: [withImg('a'), withImg('b')] }] };
     const after = { ...EMPTY_MENU_EXTRAS, blocks: [{ title: 'S', items: [withImg('b')] }] };
     expect(removedImagePublicIds(before, after)).toEqual(['a']);
