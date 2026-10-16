@@ -69,7 +69,7 @@ export class MaterialsService {
           if (imageData.url && imageData.url.startsWith('data:')) {
             const base64Data = imageData.url.split(',')[1];
             const buffer = Buffer.from(base64Data, 'base64');
-            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials/');
+            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials/', tenantId);
             imageUrls.push(result.secure_url);
           }
         }
@@ -238,7 +238,7 @@ export class MaterialsService {
           if (imageData.url && imageData.url.startsWith('data:')) {
             const base64Data = imageData.url.split(',')[1];
             const buffer = Buffer.from(base64Data, 'base64');
-            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials/');
+            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials/', tenantId);
             imageUrls.push(result.secure_url);
           }
         }

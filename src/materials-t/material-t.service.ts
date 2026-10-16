@@ -75,7 +75,7 @@ import {
         // Handle uploaded files first (from multipart/form-data)
         if (uploadedFiles && uploadedFiles.length > 0) {
           for (const file of uploadedFiles) {
-            const result = await this.cloudinaryService.uploadImage(file, '/InOut/materials-t/');
+            const result = await this.cloudinaryService.uploadImage(file, '/InOut/materials-t/', tenantId);
             imageUrls.push(result.secure_url);
           }
         }
@@ -87,19 +87,19 @@ import {
             if (imageData.url && imageData.url.startsWith('data:')) {
               const base64Data = imageData.url.split(',')[1];
               const buffer = Buffer.from(base64Data, 'base64');
-              const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials-t/');
+              const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, '/InOut/materials-t/', tenantId);
               imageUrls.push(result.secure_url);
             }
             // Handle file objects (from FormData)
             else if (imageData.file && Object.keys(imageData.file).length > 0) {
               // If file object has buffer data
               if (imageData.file.buffer) {
-                const result = await this.cloudinaryService.uploadImageFromBuffer(imageData.file.buffer, '/InOut/materials-t/');
+                const result = await this.cloudinaryService.uploadImageFromBuffer(imageData.file.buffer, '/InOut/materials-t/', tenantId);
                 imageUrls.push(result.secure_url);
               }
               // If file object has path
               else if (imageData.file.path) {
-                const result = await this.cloudinaryService.uploadImage(imageData.file, '/InOut/materials-t/');
+                const result = await this.cloudinaryService.uploadImage(imageData.file, '/InOut/materials-t/', tenantId);
                 imageUrls.push(result.secure_url);
               }
             }
