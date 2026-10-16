@@ -127,7 +127,7 @@ export class ProductsService {
             const buffer = Buffer.from(base64Data, 'base64');
             
             // Upload to Cloudinary
-            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, 'InOut/products');
+            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, 'InOut/products', tenantId);
             imageUrl = result.secure_url;
           }
           
@@ -701,7 +701,7 @@ export class ProductsService {
           if (imageUrl.startsWith('data:image')) {
             const base64Data = imageUrl.split(',')[1];
             const buffer = Buffer.from(base64Data, 'base64');
-            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, 'InOut/products');
+            const result = await this.cloudinaryService.uploadImageFromBuffer(buffer, 'InOut/products', tenantId);
             imageUrl = result.secure_url;
           }
           
@@ -901,7 +901,7 @@ export class ProductsService {
     const uploadedImages = [];
     
     for (const file of files) {
-      const result = await this.cloudinaryService.uploadImageFromBuffer(file.buffer, '/InOut/products');
+      const result = await this.cloudinaryService.uploadImageFromBuffer(file.buffer, '/InOut/products', tenantId);
       
       const image = this.imageRepository.create({
         strTenantId: tenantId,

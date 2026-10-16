@@ -129,7 +129,7 @@ export class OrderPaymentsService {
       throw new BadRequestException('Ya hay comprobantes por verificar que cubren el saldo del pedido.');
     }
 
-    const uploaded = await this.cloudinaryService.uploadImageFromBuffer(file.buffer, 'inout/payment-vouchers');
+    const uploaded = await this.cloudinaryService.uploadImageFromBuffer(file.buffer, 'inout/payment-vouchers', order.tenantId);
     return this.paymentRepository.save(this.paymentRepository.create({
       tenantId: order.tenantId,
       orderId: order.id,
