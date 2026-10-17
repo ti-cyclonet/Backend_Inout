@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean, IsObject, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsNotEmpty, ValidateNested, IsIn, IsBoolean, IsObject, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PAYMENT_PLANS } from '../payment-plans';
 
@@ -154,6 +154,12 @@ export class CreateMarketplaceOrderDto {
   @IsOptional()
   @IsIn(['DELIVERY', 'PICKUP'])
   fulfillment?: 'DELIVERY' | 'PICKUP';
+
+  /** Zona de entrega elegida (si la tienda cobra el domicilio por zona); '__other__' = otra zona. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  deliveryZone?: string;
 
   /** Ubicación exacta de entrega capturada con el GPS del comprador (opcional). */
   @IsOptional()

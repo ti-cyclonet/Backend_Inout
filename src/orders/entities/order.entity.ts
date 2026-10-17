@@ -173,9 +173,13 @@ export class Order {
   @Column({ type: 'varchar', length: 10, nullable: true })
   fulfillment: string | null;
 
-  /** Valor del domicilio cobrado al cliente (incluido en total). Es el presupuesto del domicilio en Shotra. */
+  /** Valor del domicilio cobrado al cliente (incluido en total). Es el valor mínimo del domicilio en Shotra. */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   deliveryFee: number;
+
+  /** Zona de entrega que eligió el cliente ("Turbaco", "Otra zona"); null sin zonas o si recoge. */
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  deliveryZone: string | null;
 
   /** Ganancia al facturar: ingreso sin impuestos ni domicilio − costo de lo vendido (common/sale-profit.ts). */
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })

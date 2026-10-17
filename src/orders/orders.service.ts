@@ -136,7 +136,12 @@ export class OrdersService {
     const giftOnly = (createDto.items || []).length > 0 && createDto.items.every(isGiftCardLine);
     const requested = giftOnly ? undefined : createDto.fulfillment;
     const config = requested ? await this.marketplaceConfigService.getConfig(createDto.tenantId) : null;
-    const delivery = resolveFulfillment(requested, giftOnly ? undefined : createDto.customerAddress, resolveDeliveryOptions(config?.deliveryOptions));
+    const delivery = resolveFulfillment(
+      requested,
+      giftOnly ? undefined : createDto.customerAddress,
+      resolveDeliveryOptions(config?.deliveryOptions, (config?.menuExtras as any)?.deliveryZones),
+      createDto.deliveryZone,
+    );
     if (delivery.deliveryFee > 0) createDto.total = (Number(createDto.total) || 0) + delivery.deliveryFee;
     return delivery;
   }
@@ -622,6 +627,7 @@ export class OrdersService {
         customerAddress: delivery.address,
         fulfillment: delivery.fulfillment,
         deliveryFee: delivery.deliveryFee,
+        deliveryZone: delivery.zone,
         requestedPaymentType: customer.customerId && plan === 'CREDITO' ? 'CREDITO' : null,
         paymentPlan: plan,
         depositRequired: terms?.depositRequired || 0,

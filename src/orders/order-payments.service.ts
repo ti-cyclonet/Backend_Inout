@@ -224,6 +224,7 @@ export class OrderPaymentsService {
       /** Entrega: a domicilio (con su valor) o recoger en el local (con su dirección). */
       fulfillment: order.fulfillment || null,
       deliveryFee: Number(order.deliveryFee) || 0,
+      deliveryZone: order.fulfillment === 'DELIVERY' ? order.deliveryZone || null : null,
       pickupAddress: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupAddress || null : null,
       pickupNotes: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupNotes || null : null,
       paymentPlan: order.paymentPlan,
