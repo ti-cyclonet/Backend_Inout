@@ -102,3 +102,29 @@ describe('estimateQueue', () => {
     expect(q.every((e) => e.waitMinutes === 0)).toBe(true);
   });
 });
+
+describe('pedidos sin nada por fabricar (solo se alistan)', () => {
+  const s = resolveTimingSettings({ stageDurations: { CONFIRMED: 15, IN_PRODUCTION: 60 }, productionCapacity: 1 });
+  const alistar = (id: string, minAgo: number): QueueOrder => ({ ...order(id, OrderStatus.CONFIRMED, minAgo), needsProduction: false });
+
+  it('no entra a la cola: listo al terminar de alistarse', () => {
+    const q = estimateQueue([order('p', OrderStatus.IN_PRODUCTION, 10), alistar('r', 5)], s, now);
+    const r = q.find((e) => e.id === 'r')!;
+    expect(r.queuePosition).toBeNull();
+    expect(r.waitMinutes).toBe(0);
+    expect(iso(r.estimatedReadyAt)).toBe(iso(at(10)));
+  });
+
+  it('no ocupa cupo ni retrasa a los que se fabrican', () => {
+    const sin = estimateQueue([order('p', OrderStatus.IN_PRODUCTION, 10), order('c', OrderStatus.CONFIRMED, 2)], s, now);
+    const con = estimateQueue([order('p', OrderStatus.IN_PRODUCTION, 10), alistar('r', 5), order('c', OrderStatus.CONFIRMED, 2)], s, now);
+    const c = (q: typeof sin) => q.find((e) => e.id === 'c')!;
+    expect(c(con).queuePosition).toBe(1);
+    expect(iso(c(con).estimatedReadyAt)).toBe(iso(c(sin).estimatedReadyAt));
+  });
+
+  it('si ya pasó su tiempo de alistamiento, se asume listo ahora', () => {
+    const r = estimateQueue([alistar('r', 40)], s, now)[0];
+    expect(iso(r.estimatedReadyAt)).toBe(iso(now));
+  });
+});

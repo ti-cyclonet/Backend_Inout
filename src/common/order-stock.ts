@@ -75,6 +75,16 @@ export function toManufactureOf(item: OrderStockItem): number {
   return Math.max(0, Number(item.toManufacture) || 0);
 }
 
+/**
+ * El pedido pasa por producción solo si algo de él se fabrica (bajo pedido,
+ * sin stock). Lo que ya está en stock —material de reventa, producto ya
+ * fabricado, combo o kit armado con stock— solo se alista: va de Confirmado a
+ * Listo sin la etapa En producción ni la cola de producción.
+ */
+export function orderNeedsProduction(order: { items?: OrderStockItem[] | null; productionLeadHours?: number | string | null }): boolean {
+  return (order.items || []).some((i) => toManufactureOf(i) > 0) || Number(order.productionLeadHours) > 0;
+}
+
 /** Líneas con la cantidad RESERVADA (para liberar la reserva o descontarla). */
 export function reservedLines(items: OrderStockItem[]): StockLine[] {
   return (items || [])
