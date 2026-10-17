@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { reservedLines, reserveManufactured, reserveOrderStock } from './order-stock';
+import { orderNeedsProduction, reservedLines, reserveManufactured, reserveOrderStock } from './order-stock';
 
 /**
  * EntityManager falso: findOne devuelve productos/materiales de un mapa y
@@ -117,5 +117,17 @@ describe('reserveOrderStock · kits armados bajo pedido', () => {
   it('si algún componente no es bajo pedido, el kit sigue exigiendo armados', async () => {
     const { manager } = kitManager([{ id: 'blusa', mto: true }, { id: 'medias', mto: false }]);
     await expect(reserveOrderStock(manager, 't1', [item('k1', 1, { itemType: 'kit' })])).rejects.toThrow(/Stock insuficiente/);
+  });
+});
+
+describe('orderNeedsProduction', () => {
+  it('solo si algo se fabrica (bajo pedido sin stock)', () => {
+    expect(orderNeedsProduction({ items: [{ productId: 'm1', quantity: 2, reservedQuantity: 2, toManufacture: 0 } as any] })).toBe(false);
+    expect(orderNeedsProduction({ items: [{ productId: 'm1', quantity: 2 }, { productId: 'p1', quantity: 3, toManufacture: 1 }] as any })).toBe(true);
+  });
+
+  it('con tiempo de fabricación registrado, pasa por producción', () => {
+    expect(orderNeedsProduction({ items: [], productionLeadHours: 2 })).toBe(true);
+    expect(orderNeedsProduction({ items: null, productionLeadHours: null })).toBe(false);
   });
 });
