@@ -9,6 +9,9 @@ import { OrderStatus } from './entities/order.entity';
  *   están en producción. Con `productionCapacity` pedidos en paralelo, un
  *   pedido empieza cuando se libera un cupo: su hora estimada de listo incluye
  *   la espera por los pedidos que tiene delante, no solo su propio tiempo.
+ * - Un pedido sin nada por fabricar (needsProduction = false) no entra a la
+ *   cola ni ocupa cupo: está listo cuando termina de alistarse (la duración de
+ *   su etapa actual).
  */
 
 /** Etapas del kanban que admiten duración. */
@@ -71,6 +74,8 @@ export interface QueueOrder {
   leadHours: number;
   /** Pedido programado: inicio de su franja de entrega. */
   scheduledStart?: Date | null;
+  /** false = nada por fabricar (solo se alista); ausente = pasa por producción. */
+  needsProduction?: boolean;
 }
 
 export interface QueueEstimate {
@@ -94,7 +99,18 @@ export function estimateQueue(orders: QueueOrder[], settings: OrderTimingSetting
   const result: QueueEstimate[] = [];
   const entered = (o: QueueOrder) => (o.stageEnteredAt || o.createdAt).getTime();
 
-  const inProduction = orders.filter((o) => o.status === OrderStatus.IN_PRODUCTION).sort((a, b) => entered(a) - entered(b));
+  const producing = (o: QueueOrder) => o.needsProduction !== false;
+
+  // Sin nada por fabricar: listo al terminar de alistarse, sin esperar cupo
+  for (const o of orders) {
+    if (producing(o) || (o.status !== OrderStatus.CONFIRMED && o.status !== OrderStatus.IN_PRODUCTION)) continue;
+    const start = entered(o);
+    const stage = settings.stageDurations[o.status as keyof StageDurations] || 0;
+    const end = Math.max(t0, start + stage * 60000);
+    result.push({ id: o.id, queuePosition: null, estimatedStartAt: new Date(start), estimatedReadyAt: new Date(end), waitMinutes: 0 });
+  }
+
+  const inProduction = orders.filter((o) => o.status === OrderStatus.IN_PRODUCTION && producing(o)).sort((a, b) => entered(a) - entered(b));
   for (const o of inProduction) {
     const start = entered(o);
     // Si ya se pasó de su tiempo, se asume que termina ahora (está atrasado)
@@ -116,7 +132,7 @@ export function estimateQueue(orders: QueueOrder[], settings: OrderTimingSetting
   const notBefore = (o: QueueOrder) =>
     o.scheduledStart ? o.scheduledStart.getTime() - productionMinutes(settings, o.leadHours) * 60000 : null;
   const priority = (o: QueueOrder) => Math.max(entered(o), notBefore(o) ?? 0);
-  const waiting = orders.filter((o) => o.status === OrderStatus.CONFIRMED).sort((a, b) => priority(a) - priority(b));
+  const waiting = orders.filter((o) => o.status === OrderStatus.CONFIRMED && producing(o)).sort((a, b) => priority(a) - priority(b));
   waiting.forEach((o, i) => {
     lanes.sort((a, b) => a - b);
     const start = Math.max(t0, lanes[0], notBefore(o) ?? 0);
