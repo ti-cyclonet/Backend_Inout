@@ -8,7 +8,7 @@ import { CreateOrderDto, OrderSlotsQueryDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/create-marketplace-order.dto';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
-import { previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
+import { orderNeedsProduction, previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
 import { assertOpenForAsap, assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
@@ -189,6 +189,7 @@ export class OrdersService {
       createdAt: o.createdAt,
       leadHours: Number(o.productionLeadHours) || 0,
       scheduledStart: o.scheduledStart ? new Date(o.scheduledStart) : null,
+      needsProduction: orderNeedsProduction(o as any),
     };
   }
 
@@ -234,7 +235,7 @@ export class OrdersService {
     const expanded = await expandComboLines(this.dataSource.manager, tenantId, items);
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, expanded);
     const timing = await this.getTimingSettings(tenantId);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing);
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing, preview.hasMadeToOrder);
     const slots = buildSlots(date, scheduling, {
       now: new Date(),
       earliestReadyAt,
@@ -265,7 +266,7 @@ export class OrdersService {
     }
 
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, await this.getTimingSettings(tenantId));
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder);
     const taken = await this.takenSlots(tenantId, bogotaDate(at), excludeOrderId);
     return assertSlotAvailable(at, scheduling, { now: new Date(), earliestReadyAt, takenBySlotStart: taken });
   }
@@ -319,6 +320,8 @@ export class OrdersService {
         return {
           orderId: o.id,
           status: o.status,
+          // false = nada por fabricar: de Confirmado (alistando) pasa a Listo
+          needsProduction: orderNeedsProduction(o as any),
           stageEnteredAt: o.stageEnteredAt,
           stageDueAt: due,
           // Positivo = atrasado; negativo = minutos que le quedan
@@ -375,8 +378,8 @@ export class OrdersService {
     return { at, end: null, scheduled: false };
   }
 
-  /** Hora estimada de listo para un pedido que entra al final de la cola ahora. */
-  private async estimateReadyForNewOrder(tenantId: string, leadHours: number, settings: OrderTimingSettings): Promise<Date | null> {
+  /** Hora estimada de listo para un pedido que entra al final de la cola ahora (o que solo se alista). */
+  private async estimateReadyForNewOrder(tenantId: string, leadHours: number, settings: OrderTimingSettings, needsProduction = true): Promise<Date | null> {
     const queued = await this.orderRepository.find({
       where: [
         { tenantId, status: OrderStatus.CONFIRMED },
@@ -384,7 +387,7 @@ export class OrdersService {
       ],
     });
     const now = new Date();
-    const probe: QueueOrder = { id: '__new__', status: OrderStatus.CONFIRMED, stageEnteredAt: now, createdAt: now, leadHours };
+    const probe: QueueOrder = { id: '__new__', status: OrderStatus.CONFIRMED, stageEnteredAt: now, createdAt: now, leadHours, needsProduction };
     const est = estimateQueue([...queued.map((o) => this.toQueueOrder(o)), probe], settings, now).find((e) => e.id === '__new__');
     // Sin tiempos configurados ni fabricación, no hay estimado que dar
     return est && est.estimatedReadyAt.getTime() > now.getTime() ? est.estimatedReadyAt : null;
@@ -606,7 +609,7 @@ export class OrdersService {
         : null;
 
       // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
-      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing);
+      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing, stock.hasMadeToOrder);
       const slot = createDto.scheduledStart
         ? assertSlotAvailable(createDto.scheduledStart, resolveScheduling(marketplaceConfig?.scheduling), {
             now: new Date(),
@@ -832,7 +835,9 @@ export class OrdersService {
 
     const giftOnly = (order.items || []).length > 0 && (order.items || []).every(isGiftCardLine);
     const giftShortcut = giftOnly && order.status === OrderStatus.CONFIRMED && newStatus === OrderStatus.DELIVERED;
-    if (!allowedTransitions[order.status]?.includes(newStatus) && !giftShortcut) {
+    // Nada por fabricar (reventa, productos en stock): de Confirmado (alistando) a Listo
+    const readyShortcut = order.status === OrderStatus.CONFIRMED && newStatus === OrderStatus.READY && !orderNeedsProduction(order as any);
+    if (!allowedTransitions[order.status]?.includes(newStatus) && !giftShortcut && !readyShortcut) {
       throw new BadRequestException(
         `No se puede cambiar el estado de ${order.status} a ${newStatus}`,
       );
@@ -857,8 +862,9 @@ export class OrdersService {
       order.productionLeadHours = stock.maxLeadHours || null;
     }
 
-    // Anticipo: no se fabrica ni se prepara sin el anticipo verificado
-    if (newStatus === OrderStatus.IN_PRODUCTION && order.paymentPlan && PLANS_WITH_DEPOSIT.includes(order.paymentPlan as PaymentPlan)
+    // Anticipo: no se fabrica ni se prepara sin el anticipo verificado (sin
+    // producción, se exige al pasar directo de Confirmado a Listo)
+    if ((newStatus === OrderStatus.IN_PRODUCTION || readyShortcut) && order.paymentPlan && PLANS_WITH_DEPOSIT.includes(order.paymentPlan as PaymentPlan)
       && !isDepositCovered({ depositRequired: Number(order.depositRequired), amountPaid: Number(order.amountPaid) })) {
       throw new BadRequestException(
         `Falta el anticipo verificado ($${Number(order.depositRequired).toLocaleString('es-CO')}) para iniciar la preparación.`,

@@ -5,7 +5,7 @@ import { Order, OrderStatus } from './entities/order.entity';
 import { OrderPayment, PAYMENT_METHODS } from './entities/order-payment.entity';
 import { balanceDue, computePaymentStatus } from './payment-plans';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
-import { toManufactureOf } from '../common/order-stock';
+import { orderNeedsProduction, toManufactureOf } from '../common/order-stock';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import { OrdersService } from './orders.service';
 import { resolvePaymentOptions } from './payment-plans';
@@ -225,6 +225,8 @@ export class OrderPaymentsService {
       fulfillment: order.fulfillment || null,
       deliveryFee: Number(order.deliveryFee) || 0,
       deliveryZone: order.fulfillment === 'DELIVERY' ? order.deliveryZone || null : null,
+      // false = nada por fabricar: el seguimiento no muestra "En preparación"
+      needsProduction: orderNeedsProduction(order as any),
       pickupAddress: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupAddress || null : null,
       pickupNotes: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupNotes || null : null,
       paymentPlan: order.paymentPlan,
