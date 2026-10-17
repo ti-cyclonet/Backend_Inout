@@ -144,7 +144,7 @@ export class MarketplaceConfigController {
   @Get(':tenantId/delivery-options')
   async getDeliveryOptions(@Param('tenantId') tenantId: string) {
     const config = await this.marketplaceConfigService.getConfig(tenantId);
-    return resolveDeliveryOptions(config?.deliveryOptions);
+    return resolveDeliveryOptions(config?.deliveryOptions, (config?.menuExtras as any)?.deliveryZones);
   }
 
   @Patch(':tenantId/delivery-options')
