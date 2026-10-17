@@ -11,13 +11,14 @@ import { Sale } from '../sales/entities/sale.entity';
 import { Order } from '../orders/entities/order.entity';
 import { OrderPayment } from '../orders/entities/order-payment.entity';
 import { Receivable } from '../credit/entities/receivable.entity';
+import { CreditAccount } from '../credit/entities/credit-account.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { Material } from '../materials/entities/material.entity';
 import { PurchaseRecord } from '../purchases/entities/purchase-record.entity';
 
 @Module({
-  imports: [CustomersModule, TypeOrmModule.forFeature([Sale, Order, OrderPayment, Receivable, Customer, Product, Material, PurchaseRecord, MaterialT, ProductProduction, InventoryMovement])],
+  imports: [CustomersModule, TypeOrmModule.forFeature([Sale, Order, OrderPayment, Receivable, CreditAccount, Customer, Product, Material, PurchaseRecord, MaterialT, ProductProduction, InventoryMovement])],
   controllers: [DashboardController],
   providers: [DashboardService, ModulePanelsService],
 })

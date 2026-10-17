@@ -22,6 +22,11 @@ export const saleTotal = (s: Sale) => (s.total != null ? num(s.total) : num(s.fl
 /** Cuándo un pedido pasó a ser venta: al facturarse, o su última actualización al entregarse. */
 export const orderSoldAt = (o: Order) => o.invoicedAt || o.updatedAt || o.createdAt;
 
+import { CreditAccount, CreditRequestStatus } from '../credit/entities/credit-account.entity';
+
+/** Solicitudes de crédito en trámite: aún esperan validación, cupo o aprobación. */
+const CREDIT_IN_PROGRESS = [CreditRequestStatus.SOLICITADA, CreditRequestStatus.VALIDADA, CreditRequestStatus.CUPO_ASIGNADO];
+
 /**
  * Resumen del Dashboard de InOut para el tenant de la sesión: ventas (directas
  * + pedidos entregados/facturados) con comparación contra el mes anterior,
@@ -35,6 +40,7 @@ export class DashboardService {
     @InjectRepository(Order) private orders: Repository<Order>,
     @InjectRepository(OrderPayment) private payments: Repository<OrderPayment>,
     @InjectRepository(Receivable) private receivables: Repository<Receivable>,
+    @InjectRepository(CreditAccount) private creditAccounts: Repository<CreditAccount>,
     private readonly customersService: CustomersService,
     @InjectRepository(Product) private products: Repository<Product>,
     @InjectRepository(Material) private materials: Repository<Material>,
@@ -50,6 +56,13 @@ export class DashboardService {
     const tomorrowStart = bogotaDayStart(now, 1);
     const in15Days = new Date(now.getTime() + 15 * DAY_MS);
     const todayKey = dayKey(now);
+
+    // Solicitudes de crédito en trámite (Cartera › Créditos): el tablero avisa cuando llega una nueva
+    const creditRequests = await this.creditAccounts.find({
+      where: { tenantId, requestStatus: In(CREDIT_IN_PROGRESS) } as any,
+      order: { updatedAt: 'DESC' } as any,
+      take: 50,
+    }).catch(() => [] as CreditAccount[]);
 
     const [sales, soldOrders, activeOrders, pendingPayments, openReceivables, clientList, _unused, products, materials, expiring] = await Promise.all([
       this.sales.createQueryBuilder('s')
@@ -150,6 +163,9 @@ export class DashboardService {
     const activity = [
       ...txs.map((t) => ({ id: `${t.kind}-${t.code}-${new Date(t.at).getTime()}`, kind: t.kind === 'sale' ? 'SALE' : 'ORDER_SOLD', title: t.kind === 'sale' ? `Venta ${t.code || ''}`.trim() : `Pedido ${t.code} vendido`, detail: t.customer || 'Cliente', value: t.total, at: t.at })),
       ...activeOrders.map((o) => ({ id: `stage-${o.id}-${new Date(o.stageEnteredAt || o.updatedAt).getTime()}`, kind: o.status, title: `Pedido ${o.orderCode}`, detail: (o.customerName || '').split(' | ')[0] || 'Cliente', value: num(o.total), at: o.stageEnteredAt || o.updatedAt })),
+      ...creditRequests
+        .filter((c) => c.requestStatus === CreditRequestStatus.SOLICITADA)
+        .map((c) => ({ id: `credit-${c.id}-${new Date(c.updatedAt).getTime()}`, kind: 'CREDIT_REQUEST', title: 'Solicitud de crédito', detail: c.customerName || 'Cliente', value: num(c.requestedAmount), at: c.updatedAt })),
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 10);
 
     return {
@@ -170,6 +186,14 @@ export class DashboardService {
         scheduledToday: scheduledToday.length,
         pendingPayments,
         activeValue: activeOrders.reduce((s, o) => s + num(o.total), 0),
+      },
+      credit: {
+        // En trámite (solicitada, validada o con cupo asignado) y las recién llegadas
+        pendingRequests: creditRequests.length,
+        newRequests: creditRequests
+          .filter((c) => c.requestStatus === CreditRequestStatus.SOLICITADA)
+          .slice(0, 10)
+          .map((c) => ({ id: c.id, customer: c.customerName || 'Cliente', amount: num(c.requestedAmount), at: c.updatedAt })),
       },
       receivables: {
         balance: recBalance(openReceivables),
