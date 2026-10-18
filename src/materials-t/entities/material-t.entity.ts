@@ -17,6 +17,11 @@ export class MaterialT {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingQuantity: number;
 
+  /** Cuánto rinde la receta (compositionOne), en strUnitMeasure. null = compuesto
+   * anterior a las recetas: sus cantidades eran lo consumido, no una receta. */
+  @Column({ type: 'decimal', precision: 12, scale: 3, nullable: true })
+  fltRecipeYield: number | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   fltPrice: number;
 
