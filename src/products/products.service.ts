@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { Product } from './entities/product.entity';
@@ -8,7 +8,7 @@ import { CompositionThree } from './entities/composition-three.entity';
 import { ProductProduction } from './entities/product-production.entity';
 import { Material } from '../materials/entities/material.entity';
 import { MaterialImage } from '../materials/entities/material-image.entity';
-import { CreateProductDto } from './dto/create-product.dto';
+import { CreateProductDto, CreatePresentationDto } from './dto/create-product.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
 import { BusinessParamsService } from '../config/business-params.service';
@@ -17,6 +17,7 @@ import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { mapResaleItem } from '../common/resale';
 import { resolveChoiceGroups } from './product-choices';
 import { normalizeMarginPercent } from '../common/pricing-margin';
+import { cleanLabel, nameWithLabel, presentationName } from './product-presentations';
 
 @Injectable()
 export class ProductsService {
@@ -353,6 +354,79 @@ export class ProductsService {
       ...materials.filter(isActive).map((m) => withImages(m, 'material')),
       ...materialsT.filter(isActive).map((m) => withImages(m, 'material_t')),
     ]);
+  }
+
+  /**
+   * Nueva presentación de venta: copia el producto (datos, receta y fotos) con
+   * stock en cero y lo une a su familia. El producto de origen queda como
+   * principal si aún no tenía familia.
+   */
+  async createPresentation(id: string, dto: CreatePresentationDto, tenantId: string) {
+    const label = cleanLabel(dto.label);
+    if (!label) throw new BadRequestException('Escribe el nombre de la presentación (ej. 12 oz).');
+    return this.dataSource.transaction(async (manager) => {
+      const source = await manager.findOne(Product, { where: { strId: id, strTenantId: tenantId } });
+      if (!source) throw new NotFoundException('Producto no encontrado');
+      const groupId = source.strVariantGroupId || source.strId;
+      const family = await manager.find(Product, { where: { strTenantId: tenantId, strVariantGroupId: groupId } });
+      const sourceLabel = cleanLabel(dto.sourceLabel) || source.strVariantLabel;
+      if (!sourceLabel) throw new BadRequestException(`Indica también la presentación de ${source.strName} (ej. 8 oz).`);
+      const labels = [...family.filter((p) => p.strId !== source.strId).map((p) => p.strVariantLabel), sourceLabel]
+        .map((l) => (l || '').toLowerCase());
+      if (labels.includes(label.toLowerCase())) throw new BadRequestException(`Ya existe la presentación ${label}.`);
+
+      // El origen entra a la familia (como principal si es la primera vez) y su
+      // nombre lleva la presentación, para distinguirlas en ventas y pedidos
+      source.strVariantGroupId = groupId;
+      source.strVariantLabel = sourceLabel;
+      source.strName = nameWithLabel(source.strName, sourceLabel).toUpperCase();
+      await manager.save(source);
+
+      const code = await this.generateProductCode(tenantId);
+      const { strId, strCode, dtmCreationDate, category, ...data } = source as any;
+      const copy = manager.create(Product, {
+        ...data,
+        strCode: code,
+        strName: (dto.name?.trim() || presentationName(source.strName, sourceLabel, label)).toUpperCase(),
+        strVariantGroupId: groupId,
+        strVariantLabel: label,
+        fltPrice: dto.price !== undefined ? Number(dto.price) : source.fltPrice,
+        ingQuantity: 0,
+        ingReservedStock: 0,
+      });
+      const saved = await manager.save(copy);
+
+      const two = await manager.find(CompositionTwo, { where: { strProductId: source.strId } });
+      if (two.length) {
+        await manager.save(two.map((c) => manager.create(CompositionTwo, { strProductId: saved.strId, strMaterialId: c.strMaterialId, fltQuantity: c.fltQuantity })));
+      }
+      const three = await manager.find(CompositionThree, { where: { strProductId: source.strId } });
+      if (three.length) {
+        await manager.save(three.map((c) => manager.create(CompositionThree, { strProductId: saved.strId, strTransformedMaterialId: c.strTransformedMaterialId, fltQuantity: c.fltQuantity })));
+      }
+      const images = await manager.find(MaterialImage, { where: { strEntityId: source.strId, strEntityType: 'product', strStatus: 'active' } });
+      if (images.length) {
+        await manager.save(images.map((img) => manager.create(MaterialImage, {
+          strTenantId: tenantId, strEntityType: 'product', strEntityId: saved.strId, strImageUrl: img.strImageUrl, strStatus: 'active',
+        })));
+      }
+      return saved;
+    });
+  }
+
+  /** Presentaciones de la familia del producto, de la más barata a la más cara. */
+  async findPresentations(id: string, tenantId: string) {
+    const product = await this.productRepository.findOne({ where: { strId: id, strTenantId: tenantId } });
+    if (!product) throw new NotFoundException('Producto no encontrado');
+    if (!product.strVariantGroupId) return [];
+    const family = await this.productRepository.find({ where: { strTenantId: tenantId, strVariantGroupId: product.strVariantGroupId } });
+    return family
+      .sort((a, b) => Number(a.fltPrice) - Number(b.fltPrice))
+      .map((p) => ({
+        strId: p.strId, strCode: p.strCode, strName: p.strName, strVariantLabel: p.strVariantLabel,
+        fltPrice: Number(p.fltPrice), ingQuantity: Number(p.ingQuantity), blnMarketplaceVisible: p.blnMarketplaceVisible,
+        isMain: p.strId === p.strVariantGroupId,
+      }));
   }
 
   async findOne(id: string, tenantId: string): Promise<Product> {

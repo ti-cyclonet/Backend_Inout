@@ -74,6 +74,16 @@ export class Product {
 
   /** Producto "para armar": listas de la carta de las que el cliente escoge
    * en la tienda (ej. 2 proteínas). Ver products/product-choices.ts. */
+  /** Presentaciones de venta (8 oz, 12 oz…): cada una es un producto con su
+   * receta, precio y stock; las de una misma familia comparten este id (el
+   * del producto con el que se creó la familia). null = sin presentaciones. */
+  @Column({ type: 'uuid', nullable: true })
+  strVariantGroupId: string | null;
+
+  /** Nombre de la presentación que ve el cliente, ej. "8 oz". */
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  strVariantLabel: string | null;
+
   @Column({ type: 'json', nullable: true })
   jsonChoiceGroups: { block: string; min: number; max: number }[] | null;
 

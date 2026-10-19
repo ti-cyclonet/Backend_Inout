@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
-import { CreateProductDto } from './dto/create-product.dto';
+import { CreateProductDto, CreatePresentationDto } from './dto/create-product.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
@@ -48,6 +48,22 @@ export class ProductsController {
   @UseInterceptors(UsageWarningInterceptor)
   create(@Body() createDto: CreateProductDto, @GetTenantId() tenantId: string) {
     return this.productsService.create(createDto, tenantId);
+  }
+
+  /** Nueva presentación de venta (12 oz, 20 oz…): copia el producto y su receta. */
+  @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
+  @Post(':id/presentations')
+  @CheckLimit('nProductos')
+  @UseInterceptors(UsageWarningInterceptor)
+  createPresentation(@Param('id') id: string, @Body() dto: CreatePresentationDto, @GetTenantId() tenantId: string) {
+    return this.productsService.createPresentation(id, dto, tenantId);
+  }
+
+  /** Presentaciones de la familia del producto (incluido él). */
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/presentations')
+  findPresentations(@Param('id') id: string, @GetTenantId() tenantId: string) {
+    return this.productsService.findPresentations(id, tenantId);
   }
 
   @UseGuards(JwtAuthGuard)
