@@ -18,6 +18,7 @@ import { mapResaleItem } from '../common/resale';
 import { resolveChoiceGroups } from './product-choices';
 import { normalizeMarginPercent } from '../common/pricing-margin';
 import { cleanLabel, nameWithLabel, presentationName } from './product-presentations';
+import { legacyLeadHours } from '../common/lead-time';
 
 @Injectable()
 export class ProductsService {
@@ -71,6 +72,8 @@ export class ProductsService {
         ...productData,
         jsonChoiceGroups: resolveChoiceGroups(productData.jsonChoiceGroups),
         fltMarginPercent: marginPercent,
+        // Minutos de fabricación: las horas enteras quedan de respaldo
+        ...('intProductionLeadMinutes' in productData ? { intProductionLeadHours: legacyLeadHours(productData.intProductionLeadMinutes) } : {}),
         fltPrice: finalPrice || productData.fltPrice,
         strCode: code,
         strTenantId: tenantId,
@@ -727,6 +730,7 @@ export class ProductsService {
         ...productData,
         ...('jsonChoiceGroups' in productData ? { jsonChoiceGroups: resolveChoiceGroups(productData.jsonChoiceGroups) } : {}),
         ...('fltMarginPercent' in productData ? { fltMarginPercent: normalizeMarginPercent(productData.fltMarginPercent) } : {}),
+        ...('intProductionLeadMinutes' in productData ? { intProductionLeadHours: legacyLeadHours(productData.intProductionLeadMinutes) } : {}),
         strName: productData.strName?.toUpperCase() || product.strName,
         intCategoryId: categoryId || product.intCategoryId
       });
