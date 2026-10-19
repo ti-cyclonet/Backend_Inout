@@ -13,9 +13,16 @@ export class CreateMaterialTDto {
   @IsString()
   strName: string;
 
+  /** Al crear: cantidad a producir ahora (en strUnitMeasure). */
   @IsNumber()
   @IsOptional()
   ingQuantity?: number;
+
+  /** Cuánto rinde la receta (las cantidades de `composition`), en strUnitMeasure. */
+  @IsNumber()
+  @IsOptional()
+  @Min(0.001)
+  fltRecipeYield?: number;
 
   @IsNumber()
   @IsOptional()
@@ -107,4 +114,17 @@ export class CreateMaterialTDto {
   @IsOptional()
   @Min(0)
   ingPlannedMonthlyUnits?: number;
+}
+
+/** Producir más de un compuesto con su receta. */
+export class ProduceMaterialTDto {
+  /** Cantidad a producir, en la unidad de medida del compuesto. */
+  @IsNumber()
+  @Min(0.001)
+  quantity: number;
+
+  /** Fecha del movimiento (YYYY-MM-DD); por defecto hoy. */
+  @IsString()
+  @IsOptional()
+  date?: string;
 }

@@ -21,6 +21,8 @@ import {
   import { LimitEnforcementService } from 'src/usage-counters/limit-enforcement.service';
   import { areUnitsCompatible, convertUnits, packSizeFor, unitMismatchMessage } from 'src/common/utils/unit-conversion';
   import { assertResaleConfig } from '../common/resale';
+  import { ProduceMaterialTDto } from './dto/create-material-t.dto';
+  import { ComponentNeed, RecipeComponent, componentNeeds, recipeUnitCost, shortages, validYield, weightedCost } from './composite-recipe';
   
   @Injectable()
   export class MaterialsTService {
@@ -106,6 +108,24 @@ import {
           }
         }
 
+        // Receta con rendimiento: ingQuantity es lo que se produce ahora y la
+        // receta se escala a esa cantidad. Sin rendimiento (clientes anteriores)
+        // se mantiene el comportamiento previo: la receta es lo consumido.
+        const recipeYield = validYield(materialData.fltRecipeYield);
+        let needs: ComponentNeed[] | null = null;
+        if (recipeYield) {
+          if (!(materialData.composition || []).length) throw new BadRequestException('La receta necesita al menos un material.');
+          const produced = Math.max(0, Number(materialData.ingQuantity) || 0);
+          const components = await this.loadRecipeComponents(queryRunner.manager, materialData.composition || [], tenantId, true);
+          needs = componentNeeds(components, recipeYield, produced);
+          this.assertStock(needs);
+          materialData.fltRecipeYield = recipeYield;
+          materialData.ingQuantity = produced;
+          materialData.fltPrice = recipeUnitCost(components, recipeYield);
+        } else {
+          delete materialData.fltRecipeYield;
+        }
+
         const material = this.materialRepository.create({
           ...materialData,
           strCode: code,
@@ -130,7 +150,18 @@ import {
         }
 
         // Save compositions if provided
-        if (materialData.composition && materialData.composition.length > 0) {
+        if (needs && materialData.composition?.length) {
+          await queryRunner.manager.save(materialData.composition.map(comp =>
+            this.compositionRepository.create({
+              strMaterialTId: savedMaterial.strId,
+              strComponentMaterialId: comp.componentMaterialId,
+              fltQuantity: Number(comp.quantity),
+            })
+          ));
+          if (Number(savedMaterial.ingQuantity) > 0) {
+            await this.registerProduction(queryRunner.manager, savedMaterial, needs, Number(savedMaterial.ingQuantity), Number(savedMaterial.fltPrice), tenantId);
+          }
+        } else if (materialData.composition && materialData.composition.length > 0) {
           const compositions = materialData.composition.map(comp => 
             this.compositionRepository.create({
               strMaterialTId: savedMaterial.strId,
@@ -292,6 +323,17 @@ import {
   
       try {
         const { composition, images, ...materialData } = updateMaterialDto as any;
+        // Receta con rendimiento: editarla no produce ni descuenta nada (eso va
+        // por POST :id/produce). El stock y el costo los mueven la producción y
+        // el kardex, no este formulario.
+        const recipeMode = materialData.fltRecipeYield !== undefined;
+        if (recipeMode) {
+          const y = validYield(materialData.fltRecipeYield);
+          if (!y) throw new BadRequestException('Indica cuánto rinde la receta (mayor que 0).');
+          materialData.fltRecipeYield = y;
+          delete materialData.ingQuantity;
+          delete materialData.fltPrice;
+        }
   
         let material = await this.materialRepository.preload({
           strId: id,
@@ -349,8 +391,20 @@ import {
           }
         }
   
-        // Update compositions if provided
-        if (composition !== undefined) {
+        if (recipeMode && composition !== undefined) {
+          if (!composition?.length) throw new BadRequestException('La receta necesita al menos un material.');
+          await queryRunner.manager.delete(CompositionOne, { strMaterialTId: id });
+          await queryRunner.manager.save(composition.map(comp =>
+            this.compositionRepository.create({
+              strMaterialTId: id,
+              strComponentMaterialId: comp.componentMaterialId,
+              fltQuantity: Number(comp.quantity),
+            })
+          ));
+        }
+
+        // Update compositions if provided (clientes anteriores, sin rendimiento)
+        if (!recipeMode && composition !== undefined) {
           // Get old compositions to calculate stock difference
           const oldCompositions = await queryRunner.manager.find(CompositionOne, {
             where: { strMaterialTId: id }
@@ -479,6 +533,161 @@ import {
       } catch (error) {
         this.handleDBException(error);
       }
+    }
+
+    /** Receta del compuesto con stock y costo de cada componente. */
+    async getRecipe(id: string, tenantId: string) {
+      const material = await this.materialRepository.findOne({ where: { strId: id, strTenantId: tenantId } });
+      if (!material) throw new NotFoundException('Material compuesto no encontrado');
+      const lines = await this.compositionRepository.find({ where: { strMaterialTId: id } });
+      const components = await this.loadRecipeComponents(
+        this.dataSource.manager,
+        lines.map((l) => ({ componentMaterialId: l.strComponentMaterialId, quantity: Number(l.fltQuantity) })),
+        tenantId,
+        false,
+      );
+      const recipeYield = validYield(material.fltRecipeYield);
+      return {
+        strId: material.strId,
+        strName: material.strName,
+        strUnitMeasure: material.strUnitMeasure,
+        ingQuantity: Number(material.ingQuantity),
+        fltPrice: Number(material.fltPrice),
+        fltRecipeYield: recipeYield,
+        unitCost: recipeYield ? recipeUnitCost(components, recipeYield) : null,
+        components: components.map((c) => ({
+          componentMaterialId: c.componentMaterialId,
+          name: c.name,
+          quantity: c.quantity,
+          unit: c.dischargeUnit || c.measureUnit,
+          stock: c.stock,
+          stockUnit: c.measureUnit,
+          unitPrice: c.unitPrice,
+          /** Para producir 1 unidad del compuesto, en la unidad del stock. */
+          perUnitInStockUnit: recipeYield ? componentNeeds([c], recipeYield, 1)[0].quantityInStockUnit : null,
+        })),
+      };
+    }
+
+    /**
+     * Producir más: descuenta la receta escalada a `quantity` (con validación de
+     * stock) y suma `quantity` al compuesto con costo promedio ponderado.
+     */
+    async produce(id: string, dto: ProduceMaterialTDto, tenantId: string) {
+      const quantity = Number(dto.quantity);
+      if (!(quantity > 0)) throw new BadRequestException('La cantidad a producir debe ser mayor que 0.');
+      return this.dataSource.transaction(async (manager) => {
+        const rows = await manager.query(
+          `SELECT "strId" FROM manufacturing."materials-t" WHERE "strId" = $1 AND "strTenantId" = $2 FOR UPDATE`,
+          [id, tenantId],
+        );
+        if (!rows.length) throw new NotFoundException('Material compuesto no encontrado');
+        const material = await manager.findOne(MaterialT, { where: { strId: id } });
+        const recipeYield = validYield(material.fltRecipeYield);
+        if (!recipeYield) {
+          throw new BadRequestException('Esta receta aún no indica cuánto rinde. Edita el material compuesto y complétalo antes de producir.');
+        }
+        const lines = await manager.find(CompositionOne, { where: { strMaterialTId: id } });
+        if (!lines.length) throw new BadRequestException('La receta no tiene materiales.');
+        const components = await this.loadRecipeComponents(
+          manager,
+          lines.map((l) => ({ componentMaterialId: l.strComponentMaterialId, quantity: Number(l.fltQuantity) })),
+          tenantId,
+          true,
+        );
+        const needs = componentNeeds(components, recipeYield, quantity);
+        this.assertStock(needs);
+        const batchUnitCost = recipeUnitCost(components, recipeYield);
+        const newCost = weightedCost(Number(material.ingQuantity), Number(material.fltPrice), quantity, batchUnitCost);
+        await manager.query(
+          `UPDATE manufacturing."materials-t" SET "ingQuantity" = "ingQuantity" + $1, "fltPrice" = $2, "dtmUpdateDate" = NOW() WHERE "strId" = $3`,
+          [quantity, newCost, id],
+        );
+        await this.registerProduction(manager, material, needs, quantity, batchUnitCost, tenantId, dto.date);
+        await manager.save(Activity, {
+          strTenantId: tenantId,
+          strType: 'material_transformed_produced',
+          strTitle: `Producción de ${material.strName}: ${quantity} ${material.strUnitMeasure}`,
+          strIcon: 'diagram-3',
+          strEntityId: id,
+        });
+        return {
+          strId: id,
+          produced: quantity,
+          ingQuantity: Number(material.ingQuantity) + quantity,
+          fltPrice: newCost,
+          batchUnitCost,
+          consumed: needs.map((n) => ({ componentMaterialId: n.componentMaterialId, name: n.name, quantity: n.quantityInStockUnit, unit: n.measureUnit })),
+        };
+      });
+    }
+
+    /** Componentes de la receta con su unidad, costo y stock (bloqueados si se va a descontar). */
+    private async loadRecipeComponents(manager: any, lines: { componentMaterialId: string; quantity: any }[], tenantId: string, lock: boolean): Promise<RecipeComponent[]> {
+      const out: RecipeComponent[] = [];
+      for (const line of lines) {
+        const rows = await manager.query(
+          `SELECT "strId", "strName", "ingQuantity", "fltPrice", "strUnitMeasure", "strDischargeUnit", "intPackSize"
+             FROM manufacturing.materials WHERE "strId" = $1 AND "strTenantId" = $2${lock ? ' FOR UPDATE' : ''}`,
+          [line.componentMaterialId, tenantId],
+        );
+        const m = rows[0];
+        if (!m) throw new BadRequestException('Uno de los materiales de la receta no existe.');
+        const quantity = Number(line.quantity);
+        if (!(quantity > 0)) throw new BadRequestException(`La cantidad de ${m.strName} en la receta debe ser mayor que 0.`);
+        out.push({
+          componentMaterialId: m.strId,
+          name: m.strName,
+          quantity,
+          measureUnit: m.strUnitMeasure,
+          dischargeUnit: m.strDischargeUnit || m.strUnitMeasure,
+          packSize: m.intPackSize,
+          unitPrice: Number(m.fltPrice) || 0,
+          stock: Number(m.ingQuantity) || 0,
+        });
+      }
+      return out;
+    }
+
+    private assertStock(needs: ComponentNeed[]): void {
+      const short = shortages(needs);
+      if (!short.length) return;
+      const list = short.map((n) => `${n.name}: necesitas ${+n.quantityInStockUnit.toFixed(2)} ${n.measureUnit || ''}, hay ${+n.stock.toFixed(2)}`).join('; ');
+      throw new BadRequestException(`Stock insuficiente para producir. ${list}`);
+    }
+
+    /** Salidas de los componentes y entrada del compuesto en el kardex. */
+    private async registerProduction(manager: any, material: MaterialT, needs: ComponentNeed[], quantity: number, batchUnitCost: number, tenantId: string, date?: string) {
+      const day = date || new Date().toISOString().split('T')[0];
+      for (const n of needs) {
+        if (!(n.quantityInStockUnit > 0)) continue;
+        await manager.query(
+          `UPDATE manufacturing.materials SET "ingQuantity" = "ingQuantity" - $1, "dtmUpdateDate" = NOW() WHERE "strId" = $2`,
+          [n.quantityInStockUnit, n.componentMaterialId],
+        );
+        await manager.save(InventoryMovement, manager.create(InventoryMovement, {
+          strTenantId: tenantId,
+          strMaterialId: n.componentMaterialId,
+          strType: 'OUT',
+          strReason: 'TRANSFORMED_MATERIAL',
+          fltQuantity: n.quantityInStockUnit,
+          fltUnitPrice: n.unitPrice,
+          strReferenceId: material.strId,
+          strNotes: `Salida para producir ${quantity} ${material.strUnitMeasure} de ${material.strName}`,
+          dtmDate: day,
+        }));
+      }
+      await manager.save(InventoryMovement, manager.create(InventoryMovement, {
+        strTenantId: tenantId,
+        strTransformedMaterialId: material.strId,
+        strType: 'IN',
+        strReason: 'PRODUCTION',
+        fltQuantity: quantity,
+        fltUnitPrice: batchUnitCost,
+        strReferenceId: material.strId,
+        strNotes: `Producción de material compuesto: ${material.strName}`,
+        dtmDate: day,
+      }));
     }
 
     async getCompositions(materialTId: string) {

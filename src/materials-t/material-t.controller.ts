@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { MaterialsTService } from './material-t.service';
-import { CreateMaterialTDto } from './dto/create-material-t.dto';
+import { CreateMaterialTDto, ProduceMaterialTDto } from './dto/create-material-t.dto';
 import { UpdateMaterialTDto } from './dto/update-material-t.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -40,6 +40,22 @@ export class MaterialsTController {
   @Get(':id/compositions')
   getCompositions(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.materialsService.getCompositions(id);
+  }
+
+  /** Receta con rendimiento, stock y costo de cada componente (para producir). */
+  @Get(':id/recipe')
+  getRecipe(@Param('id', new ParseUUIDPipe()) id: string, @GetTenantId() tenantId: string) {
+    return this.materialsService.getRecipe(id, tenantId);
+  }
+
+  /** Producir más: descuenta la receta escalada y suma la cantidad al stock. */
+  @Post(':id/produce')
+  produce(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ProduceMaterialTDto,
+    @GetTenantId() tenantId: string,
+  ) {
+    return this.materialsService.produce(id, dto, tenantId);
   }
 
   @Get(':id')
