@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CompositionTwoDto {
@@ -15,6 +15,31 @@ class CompositionThreeDto {
 
   @IsNumber()
   quantity: number;
+}
+
+/** Nueva presentación de venta a partir de un producto (copia su receta). */
+export class CreatePresentationDto {
+  /** Presentación nueva, ej. "12 oz". */
+  @IsString()
+  @MaxLength(40)
+  label: string;
+
+  /** Presentación del producto de origen si aún no la tiene, ej. "8 oz". */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  sourceLabel?: string;
+
+  /** Nombre del producto nuevo; por defecto el de la familia + la presentación. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  name?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  price?: number;
 }
 
 export class CreateProductDto {
@@ -98,4 +123,14 @@ export class CreateProductDto {
   @Min(0)
   @Max(1000)
   fltMarginPercent?: number | null;
+
+  /** Familia de presentaciones (id del producto principal) y nombre de la presentación. */
+  @IsString()
+  @IsOptional()
+  strVariantGroupId?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  strVariantLabel?: string | null;
 }
