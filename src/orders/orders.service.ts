@@ -37,6 +37,7 @@ import { computeSaleProfit, SaleProfit } from '../common/sale-profit';
 import { GiftCardsService, StoreCustomer } from './gift-cards/gift-cards.service';
 import { depositWithGiftCards, isGiftCardLine } from './gift-cards/gift-cards';
 import { resolveMenuExtras } from '../marketplace-config/menu-extras';
+import { orderLeadColumns, orderLeadHours } from '../common/lead-time';
 
 /** Origen (IP / navegador) de la aceptación de términos en el MarketPlace. */
 export interface ConsentMeta {
@@ -170,7 +171,7 @@ export class OrdersService {
     const history = [...(order.statusHistory || [])];
     const last = history[history.length - 1];
     if (last && !last.leftAt) last.leftAt = now.toISOString();
-    const due = stageDueAt(settings, status, now, Number(order.productionLeadHours) || 0);
+    const due = stageDueAt(settings, status, now, orderLeadHours(order));
     history.push({
       status,
       enteredAt: now.toISOString(),
@@ -187,7 +188,7 @@ export class OrdersService {
       status: o.status,
       stageEnteredAt: o.stageEnteredAt || null,
       createdAt: o.createdAt,
-      leadHours: Number(o.productionLeadHours) || 0,
+      leadHours: orderLeadHours(o),
       scheduledStart: o.scheduledStart ? new Date(o.scheduledStart) : null,
       needsProduction: orderNeedsProduction(o as any),
     };
@@ -640,7 +641,7 @@ export class OrdersService {
           : null,
         depositDeadline: terms?.depositDeadline || null,
         layawayDeadline: terms?.layawayDeadline || null,
-        productionLeadHours: stock.maxLeadHours || null,
+        ...orderLeadColumns(stock.maxLeadHours),
         // Incluye la espera por los pedidos que ya están en la cola
         estimatedReadyAt: earliestReadyAt,
         scheduledStart: slot?.start || null,
@@ -859,7 +860,7 @@ export class OrdersService {
       // Los productos "bajo pedido" pueden confirmarse sin stock (quedan por fabricar).
       const stock = await this.dataSource.transaction((manager) => reserveOrderStock(manager, tenantId, order.items));
       order.items = stock.items;
-      order.productionLeadHours = stock.maxLeadHours || null;
+      Object.assign(order, orderLeadColumns(stock.maxLeadHours));
     }
 
     // Anticipo: no se fabrica ni se prepara sin el anticipo verificado (sin

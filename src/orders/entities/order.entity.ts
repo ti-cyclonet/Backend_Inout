@@ -148,6 +148,10 @@ export class Order {
   @Column({ type: 'int', nullable: true })
   productionLeadHours: number | null;
 
+  /** Minutos de fabricación (manda sobre productionLeadHours, que queda de respaldo). */
+  @Column({ type: 'int', nullable: true })
+  productionLeadMinutes: number | null;
+
   /** Pedido programado: franja de entrega elegida (null = lo antes posible). */
   @Column({ type: 'timestamptz', nullable: true })
   scheduledStart: Date | null;

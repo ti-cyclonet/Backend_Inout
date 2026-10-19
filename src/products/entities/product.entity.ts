@@ -68,6 +68,10 @@ export class Product {
   @Column({ type: 'int', nullable: true })
   intProductionLeadHours: number | null;
 
+  /** Minutos que toma fabricarlo (manda sobre intProductionLeadHours, que queda de respaldo). */
+  @Column({ type: 'int', nullable: true })
+  intProductionLeadMinutes: number | null;
+
   /** Margen de ganancia propio (sobre el costo). null = usar el de su categoría o el del período (ver common/pricing-margin.ts). */
   @Column({ type: 'decimal', precision: 7, scale: 2, nullable: true })
   fltMarginPercent: number | null;

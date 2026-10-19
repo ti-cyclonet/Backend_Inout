@@ -4,6 +4,7 @@ import { applyStockDelta, assertStockAvailable, resolveStockLines, ResolvedStock
 import { ComboComponent } from '../combos/entities/combo-component.entity';
 import { loadComponents } from '../combos/combo-components';
 import { kitMadeToOrder } from '../combos/combo-math';
+import { orderLeadHours, productLeadHours } from './lead-time';
 
 /**
  * Stock de pedidos con FABRICACIÓN BAJO PEDIDO.
@@ -51,7 +52,7 @@ async function madeToOrderOf(
   kitCache: Map<string, { madeToOrder: boolean; leadHours: number }>,
 ): Promise<{ madeToOrder: boolean; leadHours: number }> {
   if (line.itemType === 'product') {
-    return { madeToOrder: !!line.entity.blnMadeToOrder, leadHours: Number(line.entity.intProductionLeadHours) || 0 };
+    return { madeToOrder: !!line.entity.blnMadeToOrder, leadHours: productLeadHours(line.entity) };
   }
   if (line.itemType !== 'kit') return { madeToOrder: false, leadHours: 0 };
   let kit = kitCache.get(line.id);
@@ -95,8 +96,8 @@ export function itemsNeedProduction(items: { itemType?: string; toManufacture?: 
  * con stock— solo se alista: va de Confirmado a Listo sin la etapa En
  * producción ni la cola de producción.
  */
-export function orderNeedsProduction(order: { items?: OrderStockItem[] | null; productionLeadHours?: number | string | null }): boolean {
-  return itemsNeedProduction(order.items) || Number(order.productionLeadHours) > 0;
+export function orderNeedsProduction(order: { items?: OrderStockItem[] | null; productionLeadHours?: number | string | null; productionLeadMinutes?: number | string | null }): boolean {
+  return itemsNeedProduction(order.items) || orderLeadHours(order) > 0;
 }
 
 /** Líneas con la cantidad RESERVADA (para liberar la reserva o descontarla). */

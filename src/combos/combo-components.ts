@@ -5,6 +5,7 @@ import { Material } from '../materials/entities/material.entity';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { ComboComponent, ComboItemType } from './entities/combo-component.entity';
 import { ComponentFacts } from './combo-math';
+import { productLeadHours } from '../common/lead-time';
 
 const ENTITIES = { product: Product, material: Material, material_t: MaterialT } as const;
 export const COMPONENT_TABLES: Record<ComboItemType, string> = {
@@ -65,7 +66,7 @@ export async function loadComponents(
         presentationFactor: isProduct ? 1 : num(entity.fltPresentationQuantity) || 1,
         availableStock: num(entity.ingQuantity) - num(entity.ingReservedStock),
         madeToOrder: isProduct && !!entity.blnMadeToOrder,
-        leadHours: isProduct ? num(entity.intProductionLeadHours) : 0,
+        leadHours: isProduct ? productLeadHours(entity) : 0,
       },
     });
   }
