@@ -120,10 +120,12 @@ import {
           needs = componentNeeds(components, recipeYield, produced);
           this.assertStock(needs);
           materialData.fltRecipeYield = recipeYield;
+          materialData.fltRecipeLaborCost = Math.max(0, Number(materialData.fltRecipeLaborCost) || 0);
           materialData.ingQuantity = produced;
-          materialData.fltPrice = recipeUnitCost(components, recipeYield);
+          materialData.fltPrice = recipeUnitCost(components, recipeYield, materialData.fltRecipeLaborCost);
         } else {
           delete materialData.fltRecipeYield;
+          delete materialData.fltRecipeLaborCost;
         }
 
         const material = this.materialRepository.create({
@@ -331,6 +333,9 @@ import {
           const y = validYield(materialData.fltRecipeYield);
           if (!y) throw new BadRequestException('Indica cuánto rinde la receta (mayor que 0).');
           materialData.fltRecipeYield = y;
+          if (materialData.fltRecipeLaborCost !== undefined) {
+            materialData.fltRecipeLaborCost = Math.max(0, Number(materialData.fltRecipeLaborCost) || 0);
+          }
           delete materialData.ingQuantity;
           delete materialData.fltPrice;
         }
@@ -554,7 +559,8 @@ import {
         ingQuantity: Number(material.ingQuantity),
         fltPrice: Number(material.fltPrice),
         fltRecipeYield: recipeYield,
-        unitCost: recipeYield ? recipeUnitCost(components, recipeYield) : null,
+        fltRecipeLaborCost: Number(material.fltRecipeLaborCost) || 0,
+        unitCost: recipeYield ? recipeUnitCost(components, recipeYield, Number(material.fltRecipeLaborCost)) : null,
         components: components.map((c) => ({
           componentMaterialId: c.componentMaterialId,
           name: c.name,
@@ -597,7 +603,7 @@ import {
         );
         const needs = componentNeeds(components, recipeYield, quantity);
         this.assertStock(needs);
-        const batchUnitCost = recipeUnitCost(components, recipeYield);
+        const batchUnitCost = recipeUnitCost(components, recipeYield, Number(material.fltRecipeLaborCost));
         const newCost = weightedCost(Number(material.ingQuantity), Number(material.fltPrice), quantity, batchUnitCost);
         await manager.query(
           `UPDATE manufacturing."materials-t" SET "ingQuantity" = "ingQuantity" + $1, "fltPrice" = $2, "dtmUpdateDate" = NOW() WHERE "strId" = $3`,

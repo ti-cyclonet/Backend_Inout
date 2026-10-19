@@ -22,6 +22,10 @@ export class MaterialT {
   @Column({ type: 'decimal', precision: 12, scale: 3, nullable: true })
   fltRecipeYield: number | null;
 
+  /** Mano de obra de una tanda de la receta (la que rinde fltRecipeYield). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: false, default: 0 })
+  fltRecipeLaborCost: number;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   fltPrice: number;
 

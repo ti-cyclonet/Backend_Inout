@@ -24,6 +24,12 @@ export class CreateMaterialTDto {
   @Min(0.001)
   fltRecipeYield?: number;
 
+  /** Mano de obra de una tanda de la receta ($). */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  fltRecipeLaborCost?: number;
+
   @IsNumber()
   @IsOptional()
   fltPrice?: number;
