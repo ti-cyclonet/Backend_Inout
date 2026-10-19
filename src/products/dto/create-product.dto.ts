@@ -112,6 +112,12 @@ export class CreateProductDto {
   @IsOptional()
   intProductionLeadHours?: number;
 
+  /** Minutos que toma fabricarlo (reemplaza a las horas). */
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  intProductionLeadMinutes?: number | null;
+
   /** Listas de la carta de las que el cliente escoge (se normaliza en el servicio). */
   @IsArray()
   @IsOptional()
