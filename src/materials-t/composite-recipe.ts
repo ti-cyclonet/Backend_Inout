@@ -60,11 +60,14 @@ export function componentNeeds(components: RecipeComponent[], recipeYield: numbe
   });
 }
 
-/** Costo de producir una unidad (de medida) del compuesto con la receta. */
-export function recipeUnitCost(components: RecipeComponent[], recipeYield: number): number {
-  const batch = componentNeeds(components, recipeYield, recipeYield)
+/**
+ * Costo de producir una unidad (de medida) del compuesto con la receta:
+ * materiales + mano de obra de una tanda, divididos entre lo que rinde.
+ */
+export function recipeUnitCost(components: RecipeComponent[], recipeYield: number, laborCost = 0): number {
+  const materials = componentNeeds(components, recipeYield, recipeYield)
     .reduce((sum, n) => sum + n.quantityInStockUnit * n.unitPrice, 0);
-  return round(batch / recipeYield);
+  return round((materials + Math.max(0, Number(laborCost) || 0)) / recipeYield);
 }
 
 /** Componentes sin stock suficiente para la producción. */

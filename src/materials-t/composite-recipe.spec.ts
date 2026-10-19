@@ -23,6 +23,11 @@ describe('composite-recipe', () => {
     expect(recipeUnitCost(recipe, 1000)).toBe(5.1);
   });
 
+  it('suma la mano de obra de la tanda al costo unitario', () => {
+    // (5100 de materiales + 900 de mano de obra) / 1000 g
+    expect(recipeUnitCost(recipe, 1000, 900)).toBe(6);
+  });
+
   it('detecta los componentes sin stock suficiente', () => {
     expect(shortages(componentNeeds(recipe, 1000, 2000)).map((n) => n.componentMaterialId)).toEqual(['pina']);
     expect(shortages(componentNeeds(recipe, 1000, 1000))).toEqual([]);
