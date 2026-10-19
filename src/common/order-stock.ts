@@ -76,13 +76,27 @@ export function toManufactureOf(item: OrderStockItem): number {
 }
 
 /**
- * El pedido pasa por producción solo si algo de él se fabrica (bajo pedido,
- * sin stock). Lo que ya está en stock —material de reventa, producto ya
- * fabricado, combo o kit armado con stock— solo se alista: va de Confirmado a
- * Listo sin la etapa En producción ni la cola de producción.
+ * Material compuesto de reventa (pulpa, tajadas…): aunque salga del stock se
+ * prepara para el pedido, así que pasa por En producción.
+ */
+export function isPreparedItem(item: { itemType?: string } | null | undefined): boolean {
+  return item?.itemType === 'material_t';
+}
+
+/** Alguna línea se fabrica (bajo pedido, sin stock) o se prepara (material compuesto). */
+export function itemsNeedProduction(items: { itemType?: string; toManufacture?: number }[] | null | undefined): boolean {
+  return (items || []).some((i) => toManufactureOf(i as OrderStockItem) > 0 || isPreparedItem(i));
+}
+
+/**
+ * El pedido pasa por producción si algo de él se fabrica (bajo pedido, sin
+ * stock) o se prepara (material compuesto de reventa). Lo demás que ya está en
+ * stock —material de reventa simple, producto ya fabricado, combo o kit armado
+ * con stock— solo se alista: va de Confirmado a Listo sin la etapa En
+ * producción ni la cola de producción.
  */
 export function orderNeedsProduction(order: { items?: OrderStockItem[] | null; productionLeadHours?: number | string | null }): boolean {
-  return (order.items || []).some((i) => toManufactureOf(i) > 0) || Number(order.productionLeadHours) > 0;
+  return itemsNeedProduction(order.items) || Number(order.productionLeadHours) > 0;
 }
 
 /** Líneas con la cantidad RESERVADA (para liberar la reserva o descontarla). */
