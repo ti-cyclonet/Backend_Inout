@@ -8,7 +8,7 @@ import { CreateOrderDto, OrderSlotsQueryDto } from './dto/create-order.dto';
 import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/create-marketplace-order.dto';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, movementTarget, resolveStockLines } from '../common/stock-availability';
-import { orderNeedsProduction, previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
+import { itemsNeedProduction, orderNeedsProduction, previewOrderStock, reservedLines, reserveManufactured, reserveOrderStock, toManufactureOf } from '../common/order-stock';
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
 import { assertOpenForAsap, assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
@@ -235,7 +235,7 @@ export class OrdersService {
     const expanded = await expandComboLines(this.dataSource.manager, tenantId, items);
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, expanded);
     const timing = await this.getTimingSettings(tenantId);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing, preview.hasMadeToOrder);
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing, preview.hasMadeToOrder || itemsNeedProduction(expanded));
     const slots = buildSlots(date, scheduling, {
       now: new Date(),
       earliestReadyAt,
@@ -266,7 +266,7 @@ export class OrdersService {
     }
 
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder);
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder || itemsNeedProduction(items));
     const taken = await this.takenSlots(tenantId, bogotaDate(at), excludeOrderId);
     return assertSlotAvailable(at, scheduling, { now: new Date(), earliestReadyAt, takenBySlotStart: taken });
   }
@@ -609,7 +609,7 @@ export class OrdersService {
         : null;
 
       // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
-      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing, stock.hasMadeToOrder);
+      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing, stock.hasMadeToOrder || itemsNeedProduction(stock.items));
       const slot = createDto.scheduledStart
         ? assertSlotAvailable(createDto.scheduledStart, resolveScheduling(marketplaceConfig?.scheduling), {
             now: new Date(),

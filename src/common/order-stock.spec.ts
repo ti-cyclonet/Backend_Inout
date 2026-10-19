@@ -126,6 +126,14 @@ describe('orderNeedsProduction', () => {
     expect(orderNeedsProduction({ items: [{ productId: 'm1', quantity: 2 }, { productId: 'p1', quantity: 3, toManufacture: 1 }] as any })).toBe(true);
   });
 
+  it('material compuesto de reventa pasa por producción aunque esté en stock', () => {
+    const compuesto = { productId: 't1', itemType: 'material_t', quantity: 2, reservedQuantity: 2, toManufacture: 0 };
+    const material = { productId: 'm1', itemType: 'material', quantity: 2, reservedQuantity: 2, toManufacture: 0 };
+    expect(orderNeedsProduction({ items: [compuesto] as any })).toBe(true);
+    expect(orderNeedsProduction({ items: [material, compuesto] as any })).toBe(true);
+    expect(orderNeedsProduction({ items: [material] as any })).toBe(false);
+  });
+
   it('con tiempo de fabricación registrado, pasa por producción', () => {
     expect(orderNeedsProduction({ items: [], productionLeadHours: 2 })).toBe(true);
     expect(orderNeedsProduction({ items: null, productionLeadHours: null })).toBe(false);
