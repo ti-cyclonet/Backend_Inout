@@ -152,6 +152,10 @@ export class Order {
   @Column({ type: 'int', nullable: true })
   productionLeadMinutes: number | null;
 
+  /** Tandas por fabricar en minutos (con turnos se reparten entre personas). */
+  @Column({ type: 'jsonb', nullable: true })
+  productionBatchMinutes: number[] | null;
+
   /** Pedido programado: franja de entrega elegida (null = lo antes posible). */
   @Column({ type: 'timestamptz', nullable: true })
   scheduledStart: Date | null;

@@ -27,8 +27,8 @@ import { batchLeadHours, orderLeadHours, productLeadHours } from './lead-time';
  * rendimiento (hacia arriba) y el tiempo del pedido es la SUMA de todos los
  * ítems por fabricar: en un negocio pequeño los prepara la misma persona.
  * Un kit cuenta como una sola tanda (el mayor tiempo de sus componentes).
- * TODO: varias personas en un turno (preparan en paralelo): repartir las
- * tandas entre ellas en vez de sumarlas todas.
+ * Con TURNOS de varias personas (orders/shifts.ts) las tandas (batchMinutes)
+ * se reparten entre ellas para estimar la entrega.
  *
  * Cada línea guarda `reservedQuantity` y `toManufacture` (en la misma unidad
  * en que se vende). Pedidos anteriores no traen esos campos: se consideran
@@ -51,6 +51,8 @@ export interface ReservationResult<T extends OrderStockItem> {
   hasMadeToOrder: boolean;
   /** Tiempo de fabricación (horas): suma de las tandas de todo lo que falta. */
   leadHours: number;
+  /** Cada tanda por fabricar, en minutos (con turnos se reparten entre personas). */
+  batchMinutes: number[];
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
@@ -97,13 +99,26 @@ async function madeToOrderOf(
   return kit;
 }
 
-/** Suma de las tandas de cada ítem por fabricar (ver TIEMPO arriba). */
-function pendingLeadHours(pending: Map<string, { toMake: number; mto: MadeToOrder }>): number {
+const MAX_BATCHES = 300;
+
+/**
+ * Tiempo de lo que falta: la suma de las tandas de cada ítem (ver TIEMPO
+ * arriba) y la lista de tandas en minutos, para repartirlas entre las
+ * personas de un turno. Más de MAX_BATCHES tandas de un ítem se agrupan.
+ */
+function pendingLead(pending: Map<string, { toMake: number; mto: MadeToOrder }>): { leadHours: number; batchMinutes: number[] } {
   let total = 0;
+  const batchMinutes: number[] = [];
   for (const { toMake, mto } of pending.values()) {
-    total += batchLeadHours(mto.leadHours, toMake, mto.unitsPerBatch ?? Infinity);
+    const hours = batchLeadHours(mto.leadHours, toMake, mto.unitsPerBatch ?? Infinity);
+    if (!hours) continue;
+    total += hours;
+    const per = Math.max(0, Number(mto.leadHours) || 0) * 60;
+    const count = Math.max(1, Math.round((hours * 60) / per));
+    const n = Math.min(count, MAX_BATCHES);
+    for (let i = 0; i < n; i++) batchMinutes.push(Math.round(((per * count) / n) * 100) / 100);
   }
-  return Math.round(total * 1000) / 1000;
+  return { leadHours: Math.round(total * 1000) / 1000, batchMinutes };
 }
 
 /** Cantidad reservada de una línea (compatibilidad: sin el campo = todo reservado). */
@@ -213,7 +228,7 @@ export async function reserveOrderStock<T extends OrderStockItem>(
   }
 
   await applyStockDelta(manager, tenantId, toReserve, { reserved: 1 });
-  return { items: annotated, hasMadeToOrder, leadHours: pendingLeadHours(pending) };
+  return { items: annotated, hasMadeToOrder, ...pendingLead(pending) };
 }
 
 /**
@@ -225,7 +240,7 @@ export async function previewOrderStock(
   manager: EntityManager,
   tenantId: string,
   items: StockLine[],
-): Promise<{ hasMadeToOrder: boolean; leadHours: number }> {
+): Promise<{ hasMadeToOrder: boolean; leadHours: number; batchMinutes: number[] }> {
   const resolved = await resolveStockLines(manager, tenantId, items, { skipMissing: true });
   const used = new Map<string, number>();
   const kitCache = new Map<string, MadeToOrder>();
@@ -244,7 +259,7 @@ export async function previewOrderStock(
       }
     }
   }
-  return { hasMadeToOrder, leadHours: pendingLeadHours(pending) };
+  return { hasMadeToOrder, ...pendingLead(pending) };
 }
 
 /**
