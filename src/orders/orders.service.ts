@@ -236,7 +236,7 @@ export class OrdersService {
     const expanded = await expandComboLines(this.dataSource.manager, tenantId, items);
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, expanded);
     const timing = await this.getTimingSettings(tenantId);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, timing, preview.hasMadeToOrder || itemsNeedProduction(expanded));
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.leadHours, timing, preview.hasMadeToOrder || itemsNeedProduction(expanded));
     const slots = buildSlots(date, scheduling, {
       now: new Date(),
       earliestReadyAt,
@@ -267,7 +267,7 @@ export class OrdersService {
     }
 
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.maxLeadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder || itemsNeedProduction(items));
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.leadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder || itemsNeedProduction(items));
     const taken = await this.takenSlots(tenantId, bogotaDate(at), excludeOrderId);
     return assertSlotAvailable(at, scheduling, { now: new Date(), earliestReadyAt, takenBySlotStart: taken });
   }
@@ -610,7 +610,7 @@ export class OrdersService {
         : null;
 
       // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
-      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.maxLeadHours, timing, stock.hasMadeToOrder || itemsNeedProduction(stock.items));
+      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.leadHours, timing, stock.hasMadeToOrder || itemsNeedProduction(stock.items));
       const slot = createDto.scheduledStart
         ? assertSlotAvailable(createDto.scheduledStart, resolveScheduling(marketplaceConfig?.scheduling), {
             now: new Date(),
@@ -641,7 +641,7 @@ export class OrdersService {
           : null,
         depositDeadline: terms?.depositDeadline || null,
         layawayDeadline: terms?.layawayDeadline || null,
-        ...orderLeadColumns(stock.maxLeadHours),
+        ...orderLeadColumns(stock.leadHours),
         // Incluye la espera por los pedidos que ya están en la cola
         estimatedReadyAt: earliestReadyAt,
         scheduledStart: slot?.start || null,
@@ -860,7 +860,7 @@ export class OrdersService {
       // Los productos "bajo pedido" pueden confirmarse sin stock (quedan por fabricar).
       const stock = await this.dataSource.transaction((manager) => reserveOrderStock(manager, tenantId, order.items));
       order.items = stock.items;
-      Object.assign(order, orderLeadColumns(stock.maxLeadHours));
+      Object.assign(order, orderLeadColumns(stock.leadHours));
     }
 
     // Anticipo: no se fabrica ni se prepara sin el anticipo verificado (sin

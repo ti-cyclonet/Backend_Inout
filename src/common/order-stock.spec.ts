@@ -41,7 +41,7 @@ describe('reserveOrderStock', () => {
     const r = await reserveOrderStock(manager, 't1', [item('p1', 5)]);
     expect(r.items[0]).toMatchObject({ reservedQuantity: 2, toManufacture: 3 });
     expect(r.hasMadeToOrder).toBe(true);
-    expect(r.maxLeadHours).toBe(48);
+    expect(r.leadHours).toBe(144); // 3 por fabricar, 1 por tanda: 3 × 48 h
     expect(updates[0].base).toBe(2);
   });
 
@@ -110,7 +110,7 @@ describe('reserveOrderStock · kits armados bajo pedido', () => {
     const r = await reserveOrderStock(manager, 't1', [item('k1', 2, { itemType: 'kit' })]);
     expect(r.items[0]).toMatchObject({ reservedQuantity: 0, toManufacture: 2 });
     expect(r.hasMadeToOrder).toBe(true);
-    expect(r.maxLeadHours).toBe(72);
+    expect(r.leadHours).toBe(72);
     expect(updates).toHaveLength(0);
   });
 
@@ -137,5 +137,41 @@ describe('orderNeedsProduction', () => {
   it('con tiempo de fabricación registrado, pasa por producción', () => {
     expect(orderNeedsProduction({ items: [], productionLeadHours: 2 })).toBe(true);
     expect(orderNeedsProduction({ items: null, productionLeadHours: null })).toBe(false);
+  });
+});
+
+describe('tiempo de fabricación por tandas (se suma)', () => {
+  // Rodajas de piña: una piña (10 min) rinde 8 rodajas; se vende de a 1 rodaja
+  const pina = (stock = 0) => ({
+    rodaja: { strId: 'rodaja', strName: 'Rodaja de piña', ingQuantity: stock, ingReservedStock: 0, blnMadeToOrder: true,
+      intProductionLeadMinutes: 10, fltRecipeYield: 8, fltPresentationQuantity: 1, blnForResale: true, strSalePresentation: 'Rodaja' },
+  });
+  const rodajas = (n: number) => item('rodaja', n, { itemType: 'material_t' });
+
+  it('compuesto: tandas según lo que rinde la receta', async () => {
+    expect((await reserveOrderStock(fakeManager(pina()).manager, 't1', [rodajas(3)])).leadHours).toBeCloseTo(10 / 60);
+    expect((await reserveOrderStock(fakeManager(pina()).manager, 't1', [rodajas(8)])).leadHours).toBeCloseTo(10 / 60);
+    expect((await reserveOrderStock(fakeManager(pina()).manager, 't1', [rodajas(20)])).leadHours).toBeCloseTo(30 / 60);
+  });
+
+  it('solo se cuenta lo que falta (5 en stock: faltan 15 = 2 tandas)', async () => {
+    const r = await reserveOrderStock(fakeManager(pina(5)).manager, 't1', [rodajas(20)]);
+    expect(r.items[0]).toMatchObject({ reservedQuantity: 5, toManufacture: 15 });
+    expect(r.leadHours).toBeCloseTo(20 / 60);
+  });
+
+  it('producto con unidades por tanda y suma con otros ítems por fabricar', async () => {
+    const { manager } = fakeManager({
+      ...pina(),
+      pandebono: { strId: 'pandebono', strName: 'Pandebono', ingQuantity: 0, ingReservedStock: 0, blnMadeToOrder: true, intProductionLeadMinutes: 25, intUnitsPerBatch: 12 },
+    });
+    // 30 pandebonos = 3 bandejas (75 min) + 8 rodajas = 1 piña (10 min)
+    const r = await reserveOrderStock(manager, 't1', [item('pandebono', 30), rodajas(8)]);
+    expect(r.leadHours).toBeCloseTo(85 / 60);
+  });
+
+  it('el mismo ítem en dos líneas comparte las tandas', async () => {
+    const r = await reserveOrderStock(fakeManager(pina()).manager, 't1', [rodajas(4), rodajas(4)]);
+    expect(r.leadHours).toBeCloseTo(10 / 60);
   });
 });
