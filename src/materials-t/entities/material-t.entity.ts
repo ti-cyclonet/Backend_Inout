@@ -99,6 +99,15 @@ export class MaterialT {
   @Column({ type: 'int', nullable: false, default: 0 })
   ingPlannedMonthlyUnits: number;
 
+  /** Se prepara bajo pedido: se puede pedir aunque no haya stock (lo que
+   *  falte queda por fabricar), como los productos con blnMadeToOrder. */
+  @Column({ type: 'boolean', nullable: false, default: false })
+  blnMadeToOrder: boolean;
+
+  /** Minutos que toma prepararlo (estima cuándo está listo el pedido). */
+  @Column({ type: 'int', nullable: true })
+  intProductionLeadMinutes: number | null;
+
   /** Stock reservado por pedidos confirmados, en strUnitMeasure. */
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingReservedStock: number;
