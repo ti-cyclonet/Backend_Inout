@@ -38,15 +38,15 @@ const cart = (productId: string, quantity: number) => [
 
 describe('programar un pedido sin stock', () => {
   const rows = {
-    torta: { strId: 'torta', strName: 'Torta', ingQuantity: 0, ingReservedStock: 0, blnMadeToOrder: true, intProductionLeadHours: 24 },
+    torta: { strId: 'torta', strName: 'Torta', ingQuantity: 0, ingReservedStock: 0, blnMadeToOrder: true, intProductionLeadHours: 24, intUnitsPerBatch: 2 }, // el horno saca 2 tortas por tanda
     silla: { strId: 'silla', strName: 'Silla', ingQuantity: 0, ingReservedStock: 0 },
   };
 
   it('producto bajo pedido: solo ofrece franjas desde que se termine de fabricar', async () => {
     const preview = await previewOrderStock(fakeManager(rows), 't1', cart('torta', 1));
-    expect(preview).toEqual({ hasMadeToOrder: true, maxLeadHours: 24 });
+    expect(preview).toEqual({ hasMadeToOrder: true, leadHours: 24 });
 
-    const ready = earliestReady([], preview.maxLeadHours);
+    const ready = earliestReady([], preview.leadHours);
     expect(ready!.toISOString()).toBe('2026-09-29T15:00:00.000Z'); // mañana 10:00
 
     const today = buildSlots('2026-09-28', scheduling, { now, earliestReadyAt: ready });
@@ -61,7 +61,7 @@ describe('programar un pedido sin stock', () => {
   it('al crear el pedido: nada reservado, todo por fabricar y la franja se valida igual', async () => {
     const stock = await reserveOrderStock(fakeManager(rows), 't1', cart('torta', 2));
     expect(stock.items[0]).toMatchObject({ reservedQuantity: 0, toManufacture: 2 });
-    const ready = earliestReady([], stock.maxLeadHours);
+    const ready = earliestReady([], stock.leadHours);
 
     expect(() => assertSlotAvailable(bogotaToUtc('2026-09-28', 15 * 60), scheduling, { now, earliestReadyAt: ready }))
       .toThrow(/no alcanza/);
@@ -89,7 +89,7 @@ describe('programar un pedido sin stock', () => {
   it('bajo pedido SIN tiempo de fabricación: no hay restricción de preparación (solo la anticipación mínima)', async () => {
     const sinTiempo = { torta: { ...rows.torta, intProductionLeadHours: null } };
     const preview = await previewOrderStock(fakeManager(sinTiempo), 't1', cart('torta', 1));
-    const ready = earliestReady([], preview.maxLeadHours);
+    const ready = earliestReady([], preview.leadHours);
     // Solo cuenta la etapa de producción configurada (60 min): 11:00 hoy
     expect(ready!.toISOString()).toBe('2026-09-28T16:00:00.000Z');
     const slots = buildSlots('2026-09-28', scheduling, { now, earliestReadyAt: ready });

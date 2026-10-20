@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested, Min, Max, MaxLength } from 'class-validator';
+import { IsString, IsInt, IsNumber, IsOptional, IsArray, IsBoolean, ValidateNested, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CompositionTwoDto {
@@ -117,6 +117,12 @@ export class CreateProductDto {
   @IsOptional()
   @Min(0)
   intProductionLeadMinutes?: number | null;
+
+  /** Unidades que salen en una tanda del tiempo de fabricación (mínimo 1). */
+  @IsInt()
+  @IsOptional()
+  @Min(1)
+  intUnitsPerBatch?: number;
 
   /** Listas de la carta de las que el cliente escoge (se normaliza en el servicio). */
   @IsArray()
