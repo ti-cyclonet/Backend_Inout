@@ -65,8 +65,9 @@ export async function loadComponents(
         stockUnitCost: isProduct ? num(entity.fltCost) : num(entity.fltPrice),
         presentationFactor: isProduct ? 1 : num(entity.fltPresentationQuantity) || 1,
         availableStock: num(entity.ingQuantity) - num(entity.ingReservedStock),
-        madeToOrder: isProduct && !!entity.blnMadeToOrder,
-        leadHours: isProduct ? productLeadHours(entity) : 0,
+        // Productos y compuestos de reventa pueden fabricarse bajo pedido
+        madeToOrder: (isProduct || itemType === 'material_t') && !!entity.blnMadeToOrder,
+        leadHours: isProduct || itemType === 'material_t' ? productLeadHours(entity) : 0,
       },
     });
   }

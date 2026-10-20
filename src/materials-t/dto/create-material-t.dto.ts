@@ -120,6 +120,17 @@ export class CreateMaterialTDto {
   @IsOptional()
   @Min(0)
   ingPlannedMonthlyUnits?: number;
+
+  /** Se prepara bajo pedido (se puede pedir sin stock). */
+  @IsBoolean()
+  @IsOptional()
+  blnMadeToOrder?: boolean;
+
+  /** Minutos que toma prepararlo; null o vacío = sin tiempo definido. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  intProductionLeadMinutes?: number | null;
 }
 
 /** Producir más de un compuesto con su receta. */

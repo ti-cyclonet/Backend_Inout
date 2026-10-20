@@ -12,8 +12,10 @@ import { orderLeadHours, productLeadHours } from './lead-time';
  * Un producto marcado `blnMadeToOrder` se puede pedir aunque no haya stock:
  * se reserva lo disponible y el faltante queda "por fabricar". El negocio lo
  * fabrica con un lote normal (products/production, que suma al stock) y, al
- * pasar el pedido a READY, se reserva el resto. Materiales de reventa y
- * productos sin la marca siguen exigiendo stock completo, como antes.
+ * pasar el pedido a READY, se reserva el resto. Un material compuesto de
+ * reventa con la marca también se puede pedir sin stock: se produce con su
+ * receta (materials-t/:id/produce). Los materiales de reventa simples y lo
+ * que no tiene la marca siguen exigiendo stock completo, como antes.
  *
  * Un KIT armado cuyos componentes son TODOS productos bajo pedido también se
  * puede pedir sin armados: el faltante queda por fabricar (se producen los
@@ -51,7 +53,8 @@ async function madeToOrderOf(
   line: ResolvedStockLine,
   kitCache: Map<string, { madeToOrder: boolean; leadHours: number }>,
 ): Promise<{ madeToOrder: boolean; leadHours: number }> {
-  if (line.itemType === 'product') {
+  // Productos y materiales compuestos de reventa con la marca de bajo pedido
+  if (line.itemType === 'product' || line.itemType === 'material_t') {
     return { madeToOrder: !!line.entity.blnMadeToOrder, leadHours: productLeadHours(line.entity) };
   }
   if (line.itemType !== 'kit') return { madeToOrder: false, leadHours: 0 };
