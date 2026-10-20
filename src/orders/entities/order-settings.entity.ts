@@ -17,6 +17,10 @@ export class OrderSettings {
   @Column({ type: 'int', default: 1 })
   productionCapacity: number;
 
+  /** Turnos de producción: [{ name, days: [1..6], start: '08:00', end: '14:00', people: 2 }]. Vacío = sin turnos. */
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  shifts: any[];
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

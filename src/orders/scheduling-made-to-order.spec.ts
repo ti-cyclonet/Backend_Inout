@@ -44,7 +44,7 @@ describe('programar un pedido sin stock', () => {
 
   it('producto bajo pedido: solo ofrece franjas desde que se termine de fabricar', async () => {
     const preview = await previewOrderStock(fakeManager(rows), 't1', cart('torta', 1));
-    expect(preview).toEqual({ hasMadeToOrder: true, leadHours: 24 });
+    expect(preview).toEqual({ hasMadeToOrder: true, leadHours: 24, batchMinutes: [1440] });
 
     const ready = earliestReady([], preview.leadHours);
     expect(ready!.toISOString()).toBe('2026-09-29T15:00:00.000Z'); // mañana 10:00

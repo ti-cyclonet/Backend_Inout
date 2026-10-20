@@ -155,13 +155,15 @@ export class OrdersService {
   }
 
   async updateTimingSettings(tenantId: string, body: Partial<OrderTimingSettings>): Promise<OrderTimingSettings> {
-    const settings = resolveTimingSettings(body);
     const existing = await this.orderSettingsRepository.findOne({ where: { tenantId } });
+    // Sin `shifts` en el cuerpo se conservan los turnos guardados
+    const settings = resolveTimingSettings({ ...body, shifts: body?.shifts !== undefined ? body.shifts : existing?.shifts } as any);
     await this.orderSettingsRepository.save({
       ...(existing || {}),
       tenantId,
       stageDurations: settings.stageDurations as Record<string, number>,
       productionCapacity: settings.productionCapacity,
+      shifts: settings.shifts,
     });
     return settings;
   }
@@ -171,7 +173,7 @@ export class OrdersService {
     const history = [...(order.statusHistory || [])];
     const last = history[history.length - 1];
     if (last && !last.leftAt) last.leftAt = now.toISOString();
-    const due = stageDueAt(settings, status, now, orderLeadHours(order));
+    const due = stageDueAt(settings, status, now, orderLeadHours(order), order.productionBatchMinutes);
     history.push({
       status,
       enteredAt: now.toISOString(),
@@ -189,6 +191,7 @@ export class OrdersService {
       stageEnteredAt: o.stageEnteredAt || null,
       createdAt: o.createdAt,
       leadHours: orderLeadHours(o),
+      batchMinutes: o.productionBatchMinutes || null,
       scheduledStart: o.scheduledStart ? new Date(o.scheduledStart) : null,
       needsProduction: orderNeedsProduction(o as any),
     };
@@ -236,7 +239,7 @@ export class OrdersService {
     const expanded = await expandComboLines(this.dataSource.manager, tenantId, items);
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, expanded);
     const timing = await this.getTimingSettings(tenantId);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.leadHours, timing, preview.hasMadeToOrder || itemsNeedProduction(expanded));
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.leadHours, timing, preview.hasMadeToOrder || itemsNeedProduction(expanded), preview.batchMinutes);
     const slots = buildSlots(date, scheduling, {
       now: new Date(),
       earliestReadyAt,
@@ -267,7 +270,7 @@ export class OrdersService {
     }
 
     const preview = await previewOrderStock(this.dataSource.manager, tenantId, items);
-    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.leadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder || itemsNeedProduction(items));
+    const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, preview.leadHours, await this.getTimingSettings(tenantId), preview.hasMadeToOrder || itemsNeedProduction(items), preview.batchMinutes);
     const taken = await this.takenSlots(tenantId, bogotaDate(at), excludeOrderId);
     return assertSlotAvailable(at, scheduling, { now: new Date(), earliestReadyAt, takenBySlotStart: taken });
   }
@@ -380,7 +383,7 @@ export class OrdersService {
   }
 
   /** Hora estimada de listo para un pedido que entra al final de la cola ahora (o que solo se alista). */
-  private async estimateReadyForNewOrder(tenantId: string, leadHours: number, settings: OrderTimingSettings, needsProduction = true): Promise<Date | null> {
+  private async estimateReadyForNewOrder(tenantId: string, leadHours: number, settings: OrderTimingSettings, needsProduction = true, batchMinutes: number[] | null = null): Promise<Date | null> {
     const queued = await this.orderRepository.find({
       where: [
         { tenantId, status: OrderStatus.CONFIRMED },
@@ -388,7 +391,7 @@ export class OrdersService {
       ],
     });
     const now = new Date();
-    const probe: QueueOrder = { id: '__new__', status: OrderStatus.CONFIRMED, stageEnteredAt: now, createdAt: now, leadHours, needsProduction };
+    const probe: QueueOrder = { id: '__new__', status: OrderStatus.CONFIRMED, stageEnteredAt: now, createdAt: now, leadHours, batchMinutes, needsProduction };
     const est = estimateQueue([...queued.map((o) => this.toQueueOrder(o)), probe], settings, now).find((e) => e.id === '__new__');
     // Sin tiempos configurados ni fabricación, no hay estimado que dar
     return est && est.estimatedReadyAt.getTime() > now.getTime() ? est.estimatedReadyAt : null;
@@ -610,7 +613,7 @@ export class OrdersService {
         : null;
 
       // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
-      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.leadHours, timing, stock.hasMadeToOrder || itemsNeedProduction(stock.items));
+      const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.leadHours, timing, stock.hasMadeToOrder || itemsNeedProduction(stock.items), stock.batchMinutes);
       const slot = createDto.scheduledStart
         ? assertSlotAvailable(createDto.scheduledStart, resolveScheduling(marketplaceConfig?.scheduling), {
             now: new Date(),
@@ -642,6 +645,7 @@ export class OrdersService {
         depositDeadline: terms?.depositDeadline || null,
         layawayDeadline: terms?.layawayDeadline || null,
         ...orderLeadColumns(stock.leadHours),
+        productionBatchMinutes: stock.batchMinutes.length ? stock.batchMinutes : null,
         // Incluye la espera por los pedidos que ya están en la cola
         estimatedReadyAt: earliestReadyAt,
         scheduledStart: slot?.start || null,
@@ -860,7 +864,7 @@ export class OrdersService {
       // Los productos "bajo pedido" pueden confirmarse sin stock (quedan por fabricar).
       const stock = await this.dataSource.transaction((manager) => reserveOrderStock(manager, tenantId, order.items));
       order.items = stock.items;
-      Object.assign(order, orderLeadColumns(stock.leadHours));
+      Object.assign(order, orderLeadColumns(stock.leadHours), { productionBatchMinutes: stock.batchMinutes.length ? stock.batchMinutes : null });
     }
 
     // Anticipo: no se fabrica ni se prepara sin el anticipo verificado (sin
