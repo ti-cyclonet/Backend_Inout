@@ -62,6 +62,9 @@ export function mapResaleItem(material: any, itemType: 'material' | 'material_t'
     ingReservedStock: 0,
     strStatus: material.strStatus,
     blnMarketplaceVisible: material.blnMarketplaceVisible !== false,
+    // Compuesto que se prepara bajo pedido (se puede pedir sin stock)
+    blnMadeToOrder: itemType === 'material_t' && !!material.blnMadeToOrder,
+    intProductionLeadMinutes: itemType === 'material_t' ? material.intProductionLeadMinutes ?? null : null,
     categoryId: material.categoryId ?? null,
     images,
   };
