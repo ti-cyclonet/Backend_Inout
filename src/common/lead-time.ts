@@ -16,6 +16,19 @@ export function productLeadHours(entity: { intProductionLeadMinutes?: unknown; i
   return Math.max(0, Number(entity?.intProductionLeadHours) || 0);
 }
 
+/**
+ * Tiempo por TANDAS: una tanda toma `leadHours` y rinde `unitsPerBatch`
+ * (en la misma unidad que `toMake`). Ej.: una piña (10 min) rinde 8 rodajas;
+ * 20 rodajas = 3 tandas = 30 min. Sin rendimiento (Infinity) es una sola tanda.
+ */
+export function batchLeadHours(leadHours: number, toMake: number, unitsPerBatch: number): number {
+  const h = Math.max(0, Number(leadHours) || 0);
+  const qty = Math.max(0, Number(toMake) || 0);
+  if (!h || !qty) return 0;
+  if (!Number.isFinite(unitsPerBatch) || !(unitsPerBatch > 0)) return h;
+  return Math.ceil(qty / unitsPerBatch - 1e-9) * h;
+}
+
 /** Horas (con decimales) de fabricación registradas en el pedido. */
 export function orderLeadHours(order: { productionLeadMinutes?: unknown; productionLeadHours?: unknown } | null | undefined): number {
   const minutes = minutesOf(order?.productionLeadMinutes);

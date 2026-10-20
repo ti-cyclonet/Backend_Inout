@@ -4,7 +4,7 @@ import { applyStockDelta, assertStockAvailable, resolveStockLines, ResolvedStock
 import { ComboComponent } from '../combos/entities/combo-component.entity';
 import { loadComponents } from '../combos/combo-components';
 import { kitMadeToOrder } from '../combos/combo-math';
-import { orderLeadHours, productLeadHours } from './lead-time';
+import { batchLeadHours, orderLeadHours, productLeadHours } from './lead-time';
 
 /**
  * Stock de pedidos con FABRICACIÓN BAJO PEDIDO.
@@ -20,6 +20,15 @@ import { orderLeadHours, productLeadHours } from './lead-time';
  * Un KIT armado cuyos componentes son TODOS productos bajo pedido también se
  * puede pedir sin armados: el faltante queda por fabricar (se producen los
  * componentes y se arma el kit antes de pasarlo a Listo).
+ *
+ * TIEMPO: se fabrica por TANDAS. Una tanda toma el tiempo de fabricación del
+ * ítem y rinde: en productos intUnitsPerBatch (1 por defecto), en compuestos
+ * lo que rinde su receta (fltRecipeYield). Por ítem, tandas = faltante ÷
+ * rendimiento (hacia arriba) y el tiempo del pedido es la SUMA de todos los
+ * ítems por fabricar: en un negocio pequeño los prepara la misma persona.
+ * Un kit cuenta como una sola tanda (el mayor tiempo de sus componentes).
+ * TODO: varias personas en un turno (preparan en paralelo): repartir las
+ * tandas entre ellas en vez de sumarlas todas.
  *
  * Cada línea guarda `reservedQuantity` y `toManufacture` (en la misma unidad
  * en que se vende). Pedidos anteriores no traen esos campos: se consideran
@@ -40,22 +49,42 @@ export interface ReservationResult<T extends OrderStockItem> {
   items: T[];
   /** Hay al menos una línea con unidades por fabricar. */
   hasMadeToOrder: boolean;
-  /** Mayor tiempo de fabricación (horas) entre las líneas por fabricar. */
-  maxLeadHours: number;
+  /** Tiempo de fabricación (horas): suma de las tandas de todo lo que falta. */
+  leadHours: number;
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
-/** ¿La línea se puede fabricar si falta stock? Y en cuántas horas. */
+type MadeToOrder = { madeToOrder: boolean; leadHours: number; unitsPerBatch?: number };
+
+/**
+ * ¿La línea se puede fabricar si falta stock? Cuántas horas toma una tanda y
+ * cuánto rinde (en la unidad de stock del ítem, la de baseQuantity).
+ */
 async function madeToOrderOf(
   manager: EntityManager,
   tenantId: string,
   line: ResolvedStockLine,
-  kitCache: Map<string, { madeToOrder: boolean; leadHours: number }>,
-): Promise<{ madeToOrder: boolean; leadHours: number }> {
+  kitCache: Map<string, MadeToOrder>,
+): Promise<MadeToOrder> {
   // Productos y materiales compuestos de reventa con la marca de bajo pedido
-  if (line.itemType === 'product' || line.itemType === 'material_t') {
-    return { madeToOrder: !!line.entity.blnMadeToOrder, leadHours: productLeadHours(line.entity) };
+  if (line.itemType === 'product') {
+    return {
+      madeToOrder: !!line.entity.blnMadeToOrder,
+      leadHours: productLeadHours(line.entity),
+      unitsPerBatch: Math.max(1, Number(line.entity.intUnitsPerBatch) || 1),
+    };
+  }
+  if (line.itemType === 'material_t') {
+    // La tanda es la receta (en la unidad de medida del compuesto); sin
+    // rendimiento definido, una presentación por tanda.
+    const recipeYield = Number(line.entity.fltRecipeYield) || 0;
+    const factor = line.quantity > 0 ? line.baseQuantity / line.quantity : 1;
+    return {
+      madeToOrder: !!line.entity.blnMadeToOrder,
+      leadHours: productLeadHours(line.entity),
+      unitsPerBatch: recipeYield > 0 ? recipeYield : factor || 1,
+    };
   }
   if (line.itemType !== 'kit') return { madeToOrder: false, leadHours: 0 };
   let kit = kitCache.get(line.id);
@@ -66,6 +95,15 @@ async function madeToOrderOf(
     kitCache.set(line.id, kit);
   }
   return kit;
+}
+
+/** Suma de las tandas de cada ítem por fabricar (ver TIEMPO arriba). */
+function pendingLeadHours(pending: Map<string, { toMake: number; mto: MadeToOrder }>): number {
+  let total = 0;
+  for (const { toMake, mto } of pending.values()) {
+    total += batchLeadHours(mto.leadHours, toMake, mto.unitsPerBatch ?? Infinity);
+  }
+  return Math.round(total * 1000) / 1000;
 }
 
 /** Cantidad reservada de una línea (compatibilidad: sin el campo = todo reservado). */
@@ -133,9 +171,10 @@ export async function reserveOrderStock<T extends OrderStockItem>(
 
   const shortages: string[] = [];
   const toReserve: ResolvedStockLine[] = [];
-  const kitCache = new Map<string, { madeToOrder: boolean; leadHours: number }>();
+  const kitCache = new Map<string, MadeToOrder>();
   let hasMadeToOrder = false;
-  let maxLeadHours = 0;
+  // Por ítem: lo que falta (unidad de stock) y su tanda, para sumar el tiempo
+  const pending = new Map<string, { toMake: number; mto: MadeToOrder }>();
 
   // resolveStockLines conserva el orden y omite líneas sin productId
   const annotated = items.map((item) => ({ ...item }));
@@ -159,7 +198,8 @@ export async function reserveOrderStock<T extends OrderStockItem>(
       }
       reserved = round(Math.max(0, availUnits));
       hasMadeToOrder = true;
-      maxLeadHours = Math.max(maxLeadHours, mto.leadHours);
+      const prev = pending.get(key);
+      pending.set(key, { toMake: (prev?.toMake || 0) + (line.quantity - reserved) * factor, mto });
     }
 
     item.reservedQuantity = reserved;
@@ -173,7 +213,7 @@ export async function reserveOrderStock<T extends OrderStockItem>(
   }
 
   await applyStockDelta(manager, tenantId, toReserve, { reserved: 1 });
-  return { items: annotated, hasMadeToOrder, maxLeadHours };
+  return { items: annotated, hasMadeToOrder, leadHours: pendingLeadHours(pending) };
 }
 
 /**
@@ -185,12 +225,12 @@ export async function previewOrderStock(
   manager: EntityManager,
   tenantId: string,
   items: StockLine[],
-): Promise<{ hasMadeToOrder: boolean; maxLeadHours: number }> {
+): Promise<{ hasMadeToOrder: boolean; leadHours: number }> {
   const resolved = await resolveStockLines(manager, tenantId, items, { skipMissing: true });
   const used = new Map<string, number>();
-  const kitCache = new Map<string, { madeToOrder: boolean; leadHours: number }>();
+  const kitCache = new Map<string, MadeToOrder>();
+  const pending = new Map<string, { toMake: number; mto: MadeToOrder }>();
   let hasMadeToOrder = false;
-  let maxLeadHours = 0;
   for (const line of resolved) {
     const key = `${line.itemType}:${line.id}`;
     const available = Number(line.entity.ingQuantity || 0) - Number(line.entity.ingReservedStock || 0) - (used.get(key) || 0);
@@ -199,11 +239,12 @@ export async function previewOrderStock(
       const mto = await madeToOrderOf(manager, tenantId, line, kitCache);
       if (mto.madeToOrder) {
         hasMadeToOrder = true;
-        maxLeadHours = Math.max(maxLeadHours, mto.leadHours);
+        const missing = line.baseQuantity - Math.max(0, available);
+        pending.set(key, { toMake: (pending.get(key)?.toMake || 0) + missing, mto });
       }
     }
   }
-  return { hasMadeToOrder, maxLeadHours };
+  return { hasMadeToOrder, leadHours: pendingLeadHours(pending) };
 }
 
 /**

@@ -72,6 +72,11 @@ export class Product {
   @Column({ type: 'int', nullable: true })
   intProductionLeadMinutes: number | null;
 
+  /** Unidades que salen en una tanda de intProductionLeadMinutes (ej. bandeja de
+   *  12 pandebonos). El tiempo de un pedido = tandas × minutos (common/lead-time). */
+  @Column({ type: 'int', nullable: false, default: 1 })
+  intUnitsPerBatch: number;
+
   /** Margen de ganancia propio (sobre el costo). null = usar el de su categoría o el del período (ver common/pricing-margin.ts). */
   @Column({ type: 'decimal', precision: 7, scale: 2, nullable: true })
   fltMarginPercent: number | null;
