@@ -455,6 +455,7 @@ export class OrdersService {
     const order = this.orderRepository.create({
       tenantId,
       orderCode,
+      source: 'PANEL',
       status: OrderStatus.DRAFT,
       customerId: createDto.customerId || null,
       customerName: createDto.customerName || null,
@@ -624,6 +625,7 @@ export class OrdersService {
 
       const orderCode = await this.generateOrderCode(tenantId);
       const order = manager.create(Order, {
+        source: createDto.source === 'MARKET' ? 'MARKET' : 'STORE',
         tenantId,
         orderCode,
         status: OrderStatus.CONFIRMED,
