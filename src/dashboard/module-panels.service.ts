@@ -71,7 +71,7 @@ export class ModulePanelsService {
       ...orders.map((o) => ({
         at: orderSoldAt(o), total: num(o.total), customerId: o.customerId || null, customerName: (o.customerName || '').split(' | ')[0],
         paymentType: (o.paymentType || 'CONTADO').toUpperCase(), paymentMethod: (o.paymentMethod || '').toUpperCase(),
-        channel: 'Pedido', lines: soldLines(o.items),
+        channel: o.source === 'MARKET' ? 'CycloNet Market' : o.source === 'STORE' ? 'Tienda online' : 'Pedido', lines: soldLines(o.items),
       })),
     ].filter((t) => t.at);
   }
@@ -282,6 +282,40 @@ export class ModulePanelsService {
       topCustomers: [...customers.values()].sort((a, b) => b.value - a.value).slice(0, 5).map((c) => ({ ...c, value: Math.round(c.value) })),
       ordersByStage: byStage,
       days: days.map((d) => ({ ...d, revenue: Math.round(d.revenue) })),
+      market: await this.marketContribution(tenantId, monthStart, prevMonthStart),
+    };
+  }
+
+  /**
+   * "Lo que te trajo el Market": pedidos que llegaron desde la vitrina
+   * general CycloNet Market (source = MARKET), creados este mes y el
+   * anterior, sin contar los cancelados. Clientes nuevos = los que nunca
+   * habían comprado en el negocio antes de este mes (por cliente o correo).
+   */
+  private async marketContribution(tenantId: string, monthStart: Date, prevMonthStart: Date) {
+    const [market, earlier] = await Promise.all([
+      this.orders.createQueryBuilder('o')
+        .where('o.tenantId = :t AND o.source = :s AND o.status <> :c AND o.createdAt >= :from', { t: tenantId, s: 'MARKET', c: OrderStatus.CANCELLED, from: prevMonthStart })
+        .getMany(),
+      this.orders.createQueryBuilder('o')
+        .select(['o.customerId', 'o.customerEmail'])
+        .where('o.tenantId = :t AND o.createdAt < :from', { t: tenantId, from: monthStart })
+        .getMany(),
+    ]);
+    const keyOf = (o: { customerId?: string | null; customerEmail?: string | null }) =>
+      o.customerId || (o.customerEmail || '').trim().toLowerCase() || null;
+    const known = new Set(earlier.map(keyOf).filter(Boolean));
+    const month = market.filter((o) => new Date(o.createdAt) >= monthStart);
+    const prev = market.filter((o) => new Date(o.createdAt) < monthStart);
+    const customers = new Set(month.map(keyOf).filter(Boolean));
+    const total = (l: Order[]) => Math.round(l.reduce((s, o) => s + num(o.total), 0));
+    return {
+      orders: month.length,
+      revenue: total(month),
+      customers: customers.size,
+      newCustomers: [...customers].filter((k) => !known.has(k)).length,
+      ordersPrevMonth: prev.length,
+      revenuePrevMonth: total(prev),
     };
   }
 

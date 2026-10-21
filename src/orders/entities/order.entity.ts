@@ -126,6 +126,14 @@ export class Order {
   @Column({ type: 'varchar', length: 64, nullable: true })
   shotraRequestId: string | null;
 
+  /**
+   * Origen del pedido: 'MARKET' (llegó desde la vitrina general CycloNet
+   * Market), 'STORE' (enlace o QR propio de la tienda) o 'PANEL' (lo creó el
+   * negocio). null = pedido anterior a este campo.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  source: 'MARKET' | 'STORE' | 'PANEL' | null;
+
   /** Token del enlace de seguimiento: el comprador (aun invitado) ve su pedido y sube comprobantes. */
   @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
   trackingToken: string | null;
