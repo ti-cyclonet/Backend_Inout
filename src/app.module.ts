@@ -16,6 +16,7 @@ import { PurchasesModule } from './purchases/purchases.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { SalesModule } from './sales/sales.module';
+import { MarketFeatured } from './marketplace-config/featured/market-featured.entity';
 import { MarketplaceConfigModule } from './marketplace-config/marketplace-config.module';
 import { Material } from './materials/entities/material.entity';
 import { MaterialImage } from './materials/entities/material-image.entity';
@@ -82,7 +83,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement, PlatformSetting],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement, PlatformSetting, MarketFeatured],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
