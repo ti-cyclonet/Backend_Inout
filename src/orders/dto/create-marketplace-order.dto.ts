@@ -72,6 +72,11 @@ export class CreateMarketplaceOrderDto {
   @IsNotEmpty()
   tenantId: string;
 
+  /** De dónde llegó el comprador: la vitrina general (MARKET) o la tienda directa (STORE). */
+  @IsOptional()
+  @IsIn(['MARKET', 'STORE'])
+  source?: 'MARKET' | 'STORE';
+
   @IsString()
   @IsNotEmpty()
   customerName: string;
