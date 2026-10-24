@@ -117,7 +117,7 @@ export class MaterialsService {
   }
 
   async findAll(filters: any, tenantId: string) {
-    const { limit = 10, page = 1, search, status, stockStatus, category, ubicacion } = filters;
+    const { limit = 10, page = 1, search, status, stockStatus, category, ubicacion, expiring } = filters;
     const offset = (page - 1) * limit;
 
     let queryBuilder = this.materialRepository.createQueryBuilder('material')
@@ -140,13 +140,29 @@ export class MaterialsService {
     }
 
     if (stockStatus && stockStatus !== 'all') {
-      if (stockStatus === 'low') {
-        queryBuilder = queryBuilder.andWhere('material.ingQuantity < material.ingMinStock');
+      // Mismos criterios que el panel «Requiere atención»: stock disponible
+      // (descontando lo reservado); bajo = con mínimo definido y por debajo
+      const disponible = '(COALESCE(material.ingQuantity, 0) - COALESCE(material.ingReservedStock, 0))';
+      if (stockStatus === 'out') {
+        queryBuilder = queryBuilder.andWhere(`${disponible} <= 0`);
+      } else if (stockStatus === 'low') {
+        queryBuilder = queryBuilder.andWhere(`material.ingMinStock > 0 AND ${disponible} < material.ingMinStock`);
       } else if (stockStatus === 'normal') {
         queryBuilder = queryBuilder.andWhere('material.ingQuantity >= material.ingMinStock AND material.ingQuantity <= material.ingMaxStock');
       } else if (stockStatus === 'high') {
         queryBuilder = queryBuilder.andWhere('material.ingQuantity > material.ingMaxStock');
       }
+    }
+
+    // Con lotes (compras) que vencen en los próximos `expiring` días
+    const expiringDays = Math.min(Math.max(Math.round(Number(expiring) || 0), 0), 365);
+    if (expiringDays > 0) {
+      const now = new Date();
+      queryBuilder = queryBuilder.andWhere(
+        `material.strId IN (SELECT p."strMaterialId" FROM manufacturing.purchase_records p
+          WHERE p."strTenantId" = :tenantId AND p."dtmExpirationDate" BETWEEN :expNow AND :expLimit)`,
+        { expNow: now, expLimit: new Date(now.getTime() + expiringDays * 24 * 60 * 60 * 1000) },
+      );
     }
 
     const [materials, total] = await queryBuilder

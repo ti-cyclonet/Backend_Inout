@@ -11,7 +11,7 @@ import { Sale } from '../sales/entities/sale.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CustomersService } from '../customers/customers.service';
 import { Receivable, ReceivableStatus } from '../credit/entities/receivable.entity';
-import { DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, num, saleAt, salesSinceParams } from './panel-utils';
+import { DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, nearestExpiryByMaterial, num, saleAt, salesSinceParams } from './panel-utils';
 import { ACTIVE_ORDER, SOLD_ORDER, orderSoldAt, saleTotal } from './dashboard.service';
 import { BusinessParamsService } from '../config/business-params.service';
 import { actualMargin, effectiveMargin, priceWithMargin } from '../common/pricing-margin';
@@ -77,6 +77,18 @@ export class ModulePanelsService {
   }
 
   // ─── Materiales ────────────────────────────────────────────────────────────
+  /** Materiales con lotes que vencen en los próximos `days` días (lista de materiales). */
+  async expiringMaterials(tenantId: string, days = 15) {
+    const now = new Date();
+    const d = Math.min(Math.max(Math.round(Number(days) || 15), 1), 365);
+    const rows = await this.purchases.createQueryBuilder('p').leftJoin('p.material', 'm')
+      .select(['p.strMaterialId AS "materialId"', 'm.strName AS name', 'p.dtmExpirationDate AS "expiresAt"', 'p.fltQuantity AS quantity'])
+      .where('p.strTenantId = :t', { t: tenantId })
+      .andWhere('p.dtmExpirationDate BETWEEN :now AND :limit', { now, limit: new Date(now.getTime() + d * DAY_MS) })
+      .orderBy('p.dtmExpirationDate', 'ASC').getRawMany();
+    return { days: d, materials: nearestExpiryByMaterial(rows, now) };
+  }
+
   async materialsPanel(tenantId: string) {
     const now = new Date();
     const monthStart = bogotaMonthStart(now);

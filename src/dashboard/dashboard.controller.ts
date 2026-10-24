@@ -1,4 +1,4 @@
-import { Controller, Get, Headers, UseGuards } from '@nestjs/common';
+import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { DashboardService } from './dashboard.service';
@@ -22,6 +22,12 @@ export class DashboardController {
   @Get('materials')
   materials(@GetTenantId() tenantId: string) {
     return this.panels.materialsPanel(tenantId);
+  }
+
+  /** Materiales con lotes por vencer (?days=15), para filtrarlos y resaltarlos en la lista. */
+  @Get('materials/expiring')
+  expiringMaterials(@GetTenantId() tenantId: string, @Query('days') days?: string) {
+    return this.panels.expiringMaterials(tenantId, Number(days) || 15);
   }
 
   @Get('products')
