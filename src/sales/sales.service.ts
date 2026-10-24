@@ -8,7 +8,7 @@ import { CompositionThree } from '../products/entities/composition-three.entity'
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
-import { BusinessParamsService } from '../config/business-params.service';
+import { BusinessParamsService, taxOn } from '../config/business-params.service';
 import { CreditService } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
 import { expandComboLines } from '../combos/combo-lines';
@@ -119,18 +119,11 @@ export class SalesService {
       // Obtener parámetros de negocio del período activo
       const params = await this.businessParamsService.getParams(tenantId);
 
-      // Calcular subtotal, IVA/INC y total si no vienen del frontend
+      // Subtotal; el IVA/INC sale siempre de los parámetros del período activo
+      // (sin parámetro no hay impuesto), nunca del valor que mande el cliente
       let subtotal = createDto.subtotal || parseFloat(fltQuantity.toString()) * parseFloat(fltUnitPrice.toString());
-      let tax = createDto.tax;
-      let total = createDto.total;
-
-      // Si el impuesto no fue enviado pero está configurado, calcularlo
-      if ((tax === null || tax === undefined) && (params.IVA_PORCENTAJE > 0 || params.INC_PORCENTAJE > 0)) {
-        const incRate = Number(params.INC_PORCENTAJE || 0);
-        const ivaRate = Number(params.IVA_PORCENTAJE || 0);
-        const effectiveRate = incRate > 0 ? incRate : ivaRate;
-        tax = subtotal * (effectiveRate / 100);
-      }
+      const tax = taxOn(subtotal, params);
+      let total: number;
 
       // Descuento: si el cliente envía uno manual, validarlo contra el máximo
       // permitido; si no envía nada, aplicar automáticamente el % de descuento
@@ -157,9 +150,7 @@ export class SalesService {
         }
       }
 
-      if (!total) {
-        total = subtotal + (tax || 0) - discount;
-      }
+      total = subtotal + tax - discount;
 
       const invoiceCode = await this.generateInvoiceCode(tenantId);
       // Ganancia de la venta (con el costo de lo vendido en este momento)
