@@ -80,6 +80,11 @@ export class Receivable {
   @Column({ type: 'int', default: 0 })
   reminderCount: number;
 
+  /** Token del enlace público para pagar / subir comprobante (sin cuenta). */
+  @Index({ unique: true, where: '"payToken" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  payToken: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

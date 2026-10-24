@@ -6,6 +6,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { Actor, CreditService } from './credit.service';
 import { CreditRemindersService } from './credit-reminders.service';
+import { CreditVouchersService } from './credit-vouchers.service';
 import { ForbiddenException } from '@nestjs/common';
 import {
   AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, MarketplaceCreditRequestDto, RegisterPaymentDto,
@@ -28,6 +29,7 @@ export class CreditController {
   constructor(
     private readonly creditService: CreditService,
     private readonly remindersService: CreditRemindersService,
+    private readonly vouchersService: CreditVouchersService,
   ) {}
 
   /** El cliente del MarketPlace (rol clienteInout) actúa sobre SU propio crédito. */
@@ -155,6 +157,25 @@ export class CreditController {
   @Roles('admin', 'operator')
   remind(@GetTenantId() tenantId: string, @Param('id') id: string) {
     return this.remindersService.sendManual(tenantId, id);
+  }
+
+  /** Comprobantes que subieron los clientes desde el enlace de pago (?status=PENDIENTE_VERIFICACION). */
+  @Get('vouchers')
+  @Roles('admin', 'operator', 'viewer')
+  listVouchers(@GetTenantId() tenantId: string, @Query('status') status?: string, @Query('receivableId') receivableId?: string) {
+    return this.vouchersService.list(tenantId, { status, receivableId });
+  }
+
+  /** Verificar (registra el abono) o rechazar un comprobante del cliente. */
+  @Patch('vouchers/:id/review')
+  @Roles('admin', 'operator')
+  reviewVoucher(
+    @GetTenantId() tenantId: string,
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { action: 'VERIFY' | 'REJECT'; reason?: string },
+  ) {
+    return this.vouchersService.review(tenantId, actorOf(req), id, body?.action, body?.reason);
   }
 
   @Patch('receivables/:id/void')
