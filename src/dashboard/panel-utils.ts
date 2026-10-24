@@ -44,21 +44,30 @@ export const salesSinceParams = (from: Date) => ({ from, fromDay: dayKey(from) }
 export interface ExpiringLotRow { materialId: string; name: string; expiresAt: Date | string; quantity: unknown }
 
 /**
- * Lote más próximo a vencer de cada material (para resaltarlo en la lista de
- * materiales), con los días que le quedan y cuántos lotes vencen en la ventana.
+ * Lote más urgente de cada material (para resaltarlo en la lista de
+ * materiales): el vencido más reciente o, si no hay, el más próximo a vencer.
+ * `daysLeft` es negativo en los vencidos (días que lleva vencido); `lots`
+ * cuenta los lotes del material en la ventana. Las fechas son días (date), así
+ * que un lote que vence hoy todavía no está vencido.
  */
 export function nearestExpiryByMaterial(rows: ExpiringLotRow[], now: Date) {
-  const out = new Map<string, { materialId: string; name: string; expiresAt: string; daysLeft: number; quantity: number; lots: number }>();
+  const today = Date.parse(dayKey(now));
+  const out = new Map<string, { materialId: string; name: string; expiresAt: string; daysLeft: number; expired: boolean; quantity: number; lots: number }>();
   for (const r of rows) {
     if (!r.materialId || !r.expiresAt) continue;
-    const at = new Date(r.expiresAt);
-    const daysLeft = Math.max(0, Math.ceil((at.getTime() - now.getTime()) / DAY_MS));
+    const day = typeof r.expiresAt === 'string' ? r.expiresAt.slice(0, 10) : new Date(r.expiresAt).toISOString().slice(0, 10);
+    const daysLeft = Math.round((Date.parse(day) - today) / DAY_MS);
+    const entry = { materialId: r.materialId, name: r.name, expiresAt: day, daysLeft, expired: daysLeft < 0, quantity: num(r.quantity), lots: 1 };
     const cur = out.get(r.materialId);
-    if (!cur) out.set(r.materialId, { materialId: r.materialId, name: r.name, expiresAt: at.toISOString(), daysLeft, quantity: num(r.quantity), lots: 1 });
-    else {
-      cur.lots++;
-      if (at.getTime() < new Date(cur.expiresAt).getTime()) Object.assign(cur, { expiresAt: at.toISOString(), daysLeft, quantity: num(r.quantity) });
-    }
+    if (!cur) { out.set(r.materialId, entry); continue; }
+    cur.lots++;
+    // Gana el vencido; entre vencidos, el más reciente; entre vigentes, el más próximo
+    const better = entry.expired !== cur.expired ? entry.expired
+      : entry.expired ? entry.daysLeft > cur.daysLeft : entry.daysLeft < cur.daysLeft;
+    if (better) Object.assign(cur, { ...entry, lots: cur.lots });
   }
-  return [...out.values()].sort((a, b) => a.daysLeft - b.daysLeft);
+  return [...out.values()].sort((a, b) => (a.expired === b.expired ? a.daysLeft - b.daysLeft : a.expired ? -1 : 1));
 }
+
+/** Un lote vencido cuenta solo si venció hace poco y el material aún tiene stock. */
+export const EXPIRED_LOOKBACK_DAYS = 30;

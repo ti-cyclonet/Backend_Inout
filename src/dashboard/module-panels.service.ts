@@ -11,7 +11,7 @@ import { Sale } from '../sales/entities/sale.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CustomersService } from '../customers/customers.service';
 import { Receivable, ReceivableStatus } from '../credit/entities/receivable.entity';
-import { DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, nearestExpiryByMaterial, num, saleAt, salesSinceParams } from './panel-utils';
+import { DAY_MS, SALES_SINCE_SQL, bogotaDayStart, bogotaMonthStart, dayKey, EXPIRED_LOOKBACK_DAYS, nearestExpiryByMaterial, num, saleAt, salesSinceParams } from './panel-utils';
 import { ACTIVE_ORDER, SOLD_ORDER, orderSoldAt, saleTotal } from './dashboard.service';
 import { BusinessParamsService } from '../config/business-params.service';
 import { actualMargin, effectiveMargin, priceWithMargin } from '../common/pricing-margin';
@@ -81,12 +81,26 @@ export class ModulePanelsService {
   async expiringMaterials(tenantId: string, days = 15) {
     const now = new Date();
     const d = Math.min(Math.max(Math.round(Number(days) || 15), 1), 365);
-    const rows = await this.purchases.createQueryBuilder('p').leftJoin('p.material', 'm')
+    const rows = await this.expiringLotRows(tenantId, now, d);
+    return { days: d, materials: nearestExpiryByMaterial(rows, now) };
+  }
+
+  /**
+   * Lotes que vencen en los próximos `days` días y lotes vencidos en los
+   * últimos 30 de materiales que todavía tienen stock (las compras no guardan
+   * cuánto queda de cada lote: así no se marcan vencidos ya consumidos).
+   */
+  private expiringLotRows(tenantId: string, now: Date, days: number) {
+    return this.purchases.createQueryBuilder('p').innerJoin('p.material', 'm')
       .select(['p.strMaterialId AS "materialId"', 'm.strName AS name', 'p.dtmExpirationDate AS "expiresAt"', 'p.fltQuantity AS quantity'])
       .where('p.strTenantId = :t', { t: tenantId })
-      .andWhere('p.dtmExpirationDate BETWEEN :now AND :limit', { now, limit: new Date(now.getTime() + d * DAY_MS) })
+      .andWhere(`(p.dtmExpirationDate BETWEEN :today AND :limit
+        OR (p.dtmExpirationDate >= :since AND p.dtmExpirationDate < :today AND COALESCE(m.ingQuantity, 0) > 0))`, {
+        today: dayKey(now),
+        limit: dayKey(new Date(now.getTime() + days * DAY_MS)),
+        since: dayKey(new Date(now.getTime() - EXPIRED_LOOKBACK_DAYS * DAY_MS)),
+      })
       .orderBy('p.dtmExpirationDate', 'ASC').getRawMany();
-    return { days: d, materials: nearestExpiryByMaterial(rows, now) };
   }
 
   async materialsPanel(tenantId: string) {
@@ -94,7 +108,7 @@ export class ModulePanelsService {
     const monthStart = bogotaMonthStart(now);
     const prevMonthStart = bogotaMonthStart(now, -1);
     const since30 = new Date(now.getTime() - 30 * DAY_MS);
-    const [materials, composites, movements, purchases, expiring] = await Promise.all([
+    const [materials, composites, movements, purchases, expiring, lotRows] = await Promise.all([
       this.materials.find({ where: { strTenantId: tenantId } as any }),
       this.materialsT.find({ where: { strTenantId: tenantId } as any }),
       this.movements.createQueryBuilder('m').where('m.strTenantId = :t AND m.dtmCreationDate >= :from', { t: tenantId, from: since30 }).getMany(),
@@ -104,7 +118,10 @@ export class ModulePanelsService {
         .where('p.strTenantId = :t', { t: tenantId })
         .andWhere('p.dtmExpirationDate BETWEEN :now AND :limit', { now, limit: new Date(now.getTime() + 15 * DAY_MS) })
         .orderBy('p.dtmExpirationDate', 'ASC').limit(5).getRawMany(),
+      this.expiringLotRows(tenantId, now, 15),
     ]);
+    // Materiales con lotes vencidos (últimos 30 días y con stock)
+    const expiredLots = nearestExpiryByMaterial(lotRows, now).filter((m) => m.expired);
 
     const byId = new Map(materials.map((m) => [m.strId, m]));
     const low = materials
@@ -147,10 +164,12 @@ export class ModulePanelsService {
         purchasesMonth: Math.round(purchaseValue(monthStart, new Date(now.getTime() + 1))),
         purchasesPrevMonth: Math.round(purchaseValue(prevMonthStart, monthStart)),
         idle30: idle.length,
+        expiredLots: expiredLots.length,
       },
       alerts: {
         lowStock: low.slice(0, 6),
         outOfStock: out.slice(0, 5).map((m) => ({ id: m.strId, name: m.strName, unit: m.strUnitMeasure })),
+        expiredLots: expiredLots.slice(0, 5).map((m) => ({ id: m.materialId, name: m.name, expiresAt: m.expiresAt, daysAgo: -m.daysLeft })),
         expiringLots: expiring.map((e) => ({ ...e, quantity: num(e.quantity), daysLeft: Math.ceil((new Date(e.expiresAt).getTime() - now.getTime()) / DAY_MS) })),
         idle: idle.sort((a, b) => num(b.ingQuantity) * num(b.fltPrice) - num(a.ingQuantity) * num(a.fltPrice)).slice(0, 5)
           .map((m) => ({ id: m.strId, name: m.strName, value: Math.round(num(m.ingQuantity) * num(m.fltPrice)) })),
