@@ -1,4 +1,4 @@
-import { BusinessParamsService, parseBooleanParam } from './business-params.service';
+import { BusinessParamsService, parseBooleanParam, effectiveTaxPercent, taxOn } from './business-params.service';
 
 /**
  * Costeo: el valor mensual del plan de InOut entra a los costos indirectos
@@ -57,5 +57,26 @@ describe('BusinessParamsService · plan de InOut en el costeo', () => {
     const o = await new BusinessParamsService(config).getMonthlyOverhead('t1');
     expect(o.total).toBe(50000);
     expect(o.inoutPlanUnavailable).toBe(true);
+  });
+});
+
+describe('impuesto del período', () => {
+  it('sin parámetros no hay impuesto', () => {
+    expect(effectiveTaxPercent({})).toBe(0);
+    expect(taxOn(30000, {})).toBe(0);
+  });
+
+  it('usa el IVA configurado', () => {
+    expect(taxOn(30000, { IVA_PORCENTAJE: 19 })).toBe(5700);
+    expect(taxOn(30000, { IVA_PORCENTAJE: 5 })).toBe(1500);
+  });
+
+  it('el INC manda sobre el IVA', () => {
+    expect(effectiveTaxPercent({ IVA_PORCENTAJE: 19, INC_PORCENTAJE: 8 })).toBe(8);
+    expect(taxOn(30000, { IVA_PORCENTAJE: 19, INC_PORCENTAJE: 8 })).toBe(2400);
+  });
+
+  it('redondea al centavo', () => {
+    expect(taxOn(10001, { IVA_PORCENTAJE: 19 })).toBe(1900.19);
   });
 });
