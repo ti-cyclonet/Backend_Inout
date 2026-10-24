@@ -1,4 +1,4 @@
-import { dayKey, saleAt, salesSinceParams } from './panel-utils';
+import { dayKey, nearestExpiryByMaterial, saleAt, salesSinceParams } from './panel-utils';
 
 describe('saleAt (fecha de una venta en los paneles)', () => {
   it('usa la fecha de venta aunque se haya registrado otro día', () => {
@@ -23,5 +23,17 @@ describe('saleAt (fecha de una venta en los paneles)', () => {
 
   it('el filtro de consulta lleva el día en Bogotá del inicio del rango', () => {
     expect(salesSinceParams(new Date('2026-10-01T05:00:00Z')).fromDay).toBe('2026-10-01');
+  });
+});
+
+describe('lotes por vencer por material', () => {
+  const now = new Date('2026-10-24T12:00:00Z');
+  it('deja el lote más próximo de cada material y cuenta los lotes', () => {
+    const r = nearestExpiryByMaterial([
+      { materialId: 'crema', name: 'CREMA DE LECHE', expiresAt: '2026-11-05T12:00:00Z', quantity: '2' },
+      { materialId: 'crema', name: 'CREMA DE LECHE', expiresAt: '2026-10-31T12:00:00Z', quantity: '1' },
+      { materialId: 'pan', name: 'PAN', expiresAt: '2026-10-26T12:00:00Z', quantity: 10 },
+    ], now);
+    expect(r.map((m) => [m.materialId, m.daysLeft, m.lots, m.quantity])).toEqual([['pan', 2, 1, 10], ['crema', 7, 2, 1]]);
   });
 });
