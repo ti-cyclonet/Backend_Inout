@@ -37,3 +37,15 @@ describe('lotes por vencer por material', () => {
     expect(r.map((m) => [m.materialId, m.daysLeft, m.lots, m.quantity])).toEqual([['pan', 2, 1, 10], ['crema', 7, 2, 1]]);
   });
 });
+
+describe('lotes vencidos', () => {
+  const now = new Date('2026-10-24T12:00:00Z');
+  it('el vencido gana sobre el que está por vencer y un lote que vence hoy no está vencido', () => {
+    const r = nearestExpiryByMaterial([
+      { materialId: 'leche', name: 'LECHE', expiresAt: '2026-10-30', quantity: 1 },
+      { materialId: 'leche', name: 'LECHE', expiresAt: '2026-10-20', quantity: 2 },
+      { materialId: 'pan', name: 'PAN', expiresAt: '2026-10-24', quantity: 3 },
+    ], now);
+    expect(r.map((m) => [m.materialId, m.expired, m.daysLeft, m.lots])).toEqual([['leche', true, -4, 2], ['pan', false, 0, 1]]);
+  });
+});
