@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantBrandingModule } from '../tenant-branding/tenant-branding.module';
 import { CreditAccount } from './entities/credit-account.entity';
 import { Receivable } from './entities/receivable.entity';
 import { ReceivablePayment } from './entities/receivable-payment.entity';
@@ -9,7 +10,7 @@ import { CreditService } from './credit.service';
 import { CreditController } from './credit.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CreditAccount, Receivable, ReceivablePayment, CreditSettings])],
+  imports: [TypeOrmModule.forFeature([CreditAccount, Receivable, ReceivablePayment, CreditSettings]), TenantBrandingModule],
   controllers: [CreditController],
   providers: [CreditService, CreditRemindersService],
   exports: [CreditService],

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { CreditService, money, todayCo } from './credit.service';
 import { Receivable } from './entities/receivable.entity';
+import { BusinessParamsService } from '../config/business-params.service';
+import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
 
 type ReminderKind = 'PROXIMO' | 'HOY' | 'VENCIDA';
 
@@ -24,9 +26,13 @@ const fmtDate = (iso: string) => {
 export class CreditRemindersService {
   private readonly logger = new Logger(CreditRemindersService.name);
   private readonly authorizaUrl = (process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000').replace(/\/+$/, '');
-  private businessNames = new Map<string, { name: string; at: number }>();
+  private brands = new Map<string, { name: string; logoUrl: string | null; at: number }>();
 
-  constructor(private readonly creditService: CreditService) {}
+  constructor(
+    private readonly creditService: CreditService,
+    private readonly businessParams: BusinessParamsService,
+    private readonly branding: TenantBrandingService,
+  ) {}
 
   /** Todos los días a las 8:00 a. m. (hora de Colombia). */
   @Cron('0 8 * * *', { timeZone: 'America/Bogota' })
@@ -81,9 +87,14 @@ export class CreditRemindersService {
     const statusText = kind === 'VENCIDA'
       ? `está vencida hace ${view.daysOverdue} día(s)`
       : kind === 'HOY' ? 'vence hoy' : `vence en ${view.daysToDue} día(s)`;
+    const brand = await this.brand(tenantId);
     const variables = {
       customerName: esc(view.customerName),
-      businessName: esc(await this.businessName(tenantId)),
+      businessName: esc(brand.name),
+      // Logo de la tienda (PNG acotado de Cloudinary); vacío si no tiene
+      logoBlock: brand.logoUrl
+        ? `<img src="${esc(brand.logoUrl)}" alt="${esc(brand.name)}" width="160" style="display:block;margin:0 auto 12px;max-width:160px;max-height:80px;width:auto;height:auto;border:0;">`
+        : '',
       documentCode: esc(view.documentCode),
       dueDate: fmtDate(view.dueDate),
       statusText,
@@ -110,22 +121,37 @@ export class CreditRemindersService {
     }
   }
 
-  /** Nombre del negocio (dueño del contrato en Authoriza), en caché 1 hora. */
-  private async businessName(tenantId: string): Promise<string> {
-    const cached = this.businessNames.get(tenantId);
-    if (cached && Date.now() - cached.at < 3600_000) return cached.name;
-    let name = 'tu proveedor';
+  /**
+   * Nombre y logo de la tienda, para que quien recibe el cobro la reconozca.
+   * Nombre: parámetro NEGOCIO_NOMBRE del período activo; si no está, la razón
+   * social o el nombre del titular del contrato en Authoriza. En caché 1 hora.
+   */
+  async brand(tenantId: string): Promise<{ name: string; logoUrl: string | null }> {
+    const cached = this.brands.get(tenantId);
+    if (cached && Date.now() - cached.at < 3600_000) return cached;
+    let name = '';
     try {
-      const res = await fetch(`${this.authorizaUrl}/api/contracts/tenant/${tenantId}`);
-      if (res.ok) {
-        const c: any = await res.json();
-        const bd = c?.user?.basicData;
-        name = bd?.legalEntityData?.businessName
-          || [bd?.naturalPersonData?.firstName, bd?.naturalPersonData?.firstSurname].filter(Boolean).join(' ')
-          || name;
-      }
-    } catch { /* se usa el nombre genérico */ }
-    this.businessNames.set(tenantId, { name, at: Date.now() });
-    return name;
+      const params = await this.businessParams.getParams(tenantId);
+      name = String(params['NEGOCIO_NOMBRE'] ?? '').trim();
+    } catch { /* se usa el nombre del contrato */ }
+    if (!name) {
+      try {
+        const res = await fetch(`${this.authorizaUrl}/api/contracts/tenant/${tenantId}`);
+        if (res.ok) {
+          const c: any = await res.json();
+          const bd = c?.user?.basicData;
+          name = bd?.legalEntityData?.businessName
+            || [bd?.naturalPersonData?.firstName, bd?.naturalPersonData?.firstSurname].filter(Boolean).join(' ')
+            || '';
+        }
+      } catch { /* se usa el nombre genérico */ }
+    }
+    let logoUrl: string | null = null;
+    try {
+      logoUrl = (await this.branding.get(tenantId)).logoPdfUrl;
+    } catch { /* sin logo */ }
+    const entry = { name: name || 'tu proveedor', logoUrl, at: Date.now() };
+    this.brands.set(tenantId, entry);
+    return entry;
   }
 }
