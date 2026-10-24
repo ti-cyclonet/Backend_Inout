@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
 import { CreditAccount, CreditRequestStatus } from './entities/credit-account.entity';
 import { Receivable, ReceivableStatus } from './entities/receivable.entity';
 import { ReceivablePayment } from './entities/receivable-payment.entity';
@@ -437,7 +438,7 @@ export class CreditService {
       const interestPortion = round2(Math.min(amount, pendingInterest));
       const capitalPortion = round2(amount - interestPortion);
 
-      await manager.save(ReceivablePayment, manager.create(ReceivablePayment, {
+      const payment = await manager.save(ReceivablePayment, manager.create(ReceivablePayment, {
         tenantId,
         receivableId: r.id,
         amount,
@@ -455,7 +456,7 @@ export class CreditService {
       r.balance = round2(Math.max(0, balance - capitalPortion));
       r.status = r.balance <= 0.005 ? ReceivableStatus.PAGADA : ReceivableStatus.PARCIAL;
       await manager.save(r);
-      return { ...this.decorateReceivable(r, settings), interestPortion, capitalPortion };
+      return { ...this.decorateReceivable(r, settings), interestPortion, capitalPortion, paymentId: payment.id };
     });
   }
 
@@ -602,6 +603,25 @@ export class CreditService {
     const account = await this.accountRepo.findOne({ where: { tenantId, customerId: r.customerId } });
     const settings = await this.getSettings(tenantId);
     return { entity: r, view: this.decorateReceivable(r, settings), email: account?.customerEmail || null };
+  }
+
+  // ═══════════════════════ Enlace de pago del cliente ═══════════════════════
+
+  /** Token del enlace de pago de la cuenta (se crea la primera vez). */
+  async ensurePayToken(r: Receivable): Promise<string> {
+    if (r.payToken) return r.payToken;
+    r.payToken = randomBytes(24).toString('hex');
+    await this.receivableRepo.update({ id: r.id, tenantId: r.tenantId }, { payToken: r.payToken });
+    return r.payToken;
+  }
+
+  /** Cuenta por cobrar del enlace de pago, con saldo e intereses al día. */
+  async findByPayToken(token: string) {
+    if (!token || token.length < 20) throw new NotFoundException('Enlace no válido');
+    const r = await this.receivableRepo.findOne({ where: { payToken: token } });
+    if (!r) throw new NotFoundException('Enlace no válido');
+    const settings = await this.getSettings(r.tenantId);
+    return { entity: r, view: this.decorateReceivable(r, settings) };
   }
 
   /** Tenants con recordatorios activos (para la tarea diaria). */

@@ -25,6 +25,8 @@ const fmtDate = (iso: string) => {
 @Injectable()
 export class CreditRemindersService {
   private readonly logger = new Logger(CreditRemindersService.name);
+  /** Donde vive InOut (enlace de pago del cliente). */
+  private readonly appUrl = (process.env.INOUT_APP_URL || 'https://app.cyclonet.com.co').replace(/\/+$/, '');
   private readonly authorizaUrl = (process.env.AUTHORIZA_API_URL || process.env.AUTHORIZA_URL || 'http://localhost:3000').replace(/\/+$/, '');
   private brands = new Map<string, { name: string; logoUrl: string | null; at: number }>();
 
@@ -88,6 +90,8 @@ export class CreditRemindersService {
       ? `está vencida hace ${view.daysOverdue} día(s)`
       : kind === 'HOY' ? 'vence hoy' : `vence en ${view.daysToDue} día(s)`;
     const brand = await this.brand(tenantId);
+    // Enlace para que el cliente vea lo que debe y suba el comprobante
+    const payUrl = `${this.appUrl}/pago/${await this.creditService.ensurePayToken(entity)}`;
     const variables = {
       customerName: esc(view.customerName),
       businessName: esc(brand.name),
@@ -102,6 +106,9 @@ export class CreditRemindersService {
       balance: money(view.balance),
       interest: view.interestPending > 0 ? `Intereses de mora: ${money(view.interestPending)}` : '',
       totalDue: money(view.totalDue),
+      payButton: `<div style="text-align:center;margin:24px 0 4px;"><a href="${esc(payUrl)}" style="display:inline-block;background:#1f2a44;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 26px;border-radius:10px;">Pagar o subir comprobante</a></div>`
+        + `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:8px 0 0;">Ahí ves lo que debes, los datos para pagar y puedes adjuntar la foto del comprobante.</p>`,
+      payUrl: esc(payUrl),
       year: new Date().getFullYear().toString(),
     };
     try {
