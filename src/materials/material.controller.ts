@@ -57,7 +57,8 @@ export class MaterialsController {
     @Query('status') status?: string,
     @Query('stockStatus') stockStatus?: string,
     @Query('category') category?: string,
-    @Query('ubicacion') ubicacion?: string
+    @Query('ubicacion') ubicacion?: string,
+    @Query('expiring') expiring?: string
   ) {
     const filters = {
       page: page ? parseInt(page) : 1,
@@ -66,7 +67,8 @@ export class MaterialsController {
       status,
       stockStatus,
       category,
-      ubicacion
+      ubicacion,
+      expiring
     };
     return this.materialsService.findAll(filters, tenantId);
   }

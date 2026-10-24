@@ -40,3 +40,25 @@ export function saleAt(sale: { dtmDate?: unknown; dtmCreationDate?: unknown }): 
 /** Filtro SQL de ventas desde `from` por fecha de venta o de registro (alias `s`). */
 export const SALES_SINCE_SQL = '(s.dtmDate >= :fromDay OR s.dtmCreationDate >= :from)';
 export const salesSinceParams = (from: Date) => ({ from, fromDay: dayKey(from) });
+
+export interface ExpiringLotRow { materialId: string; name: string; expiresAt: Date | string; quantity: unknown }
+
+/**
+ * Lote más próximo a vencer de cada material (para resaltarlo en la lista de
+ * materiales), con los días que le quedan y cuántos lotes vencen en la ventana.
+ */
+export function nearestExpiryByMaterial(rows: ExpiringLotRow[], now: Date) {
+  const out = new Map<string, { materialId: string; name: string; expiresAt: string; daysLeft: number; quantity: number; lots: number }>();
+  for (const r of rows) {
+    if (!r.materialId || !r.expiresAt) continue;
+    const at = new Date(r.expiresAt);
+    const daysLeft = Math.max(0, Math.ceil((at.getTime() - now.getTime()) / DAY_MS));
+    const cur = out.get(r.materialId);
+    if (!cur) out.set(r.materialId, { materialId: r.materialId, name: r.name, expiresAt: at.toISOString(), daysLeft, quantity: num(r.quantity), lots: 1 });
+    else {
+      cur.lots++;
+      if (at.getTime() < new Date(cur.expiresAt).getTime()) Object.assign(cur, { expiresAt: at.toISOString(), daysLeft, quantity: num(r.quantity) });
+    }
+  }
+  return [...out.values()].sort((a, b) => a.daysLeft - b.daysLeft);
+}
