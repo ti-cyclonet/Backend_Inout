@@ -156,12 +156,17 @@ export class MaterialsService {
 
     // Con lotes (compras) que vencen en los próximos `expiring` días
     const expiringDays = Math.min(Math.max(Math.round(Number(expiring) || 0), 0), 365);
+    // También los vencidos en los últimos 30 días si el material aún tiene stock
+    // (mismo criterio que /dashboard/materials/expiring)
     if (expiringDays > 0) {
       const now = new Date();
+      const day = (d: Date) => new Date(d.getTime() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+      const DAY = 24 * 60 * 60 * 1000;
       queryBuilder = queryBuilder.andWhere(
         `material.strId IN (SELECT p."strMaterialId" FROM manufacturing.purchase_records p
-          WHERE p."strTenantId" = :tenantId AND p."dtmExpirationDate" BETWEEN :expNow AND :expLimit)`,
-        { expNow: now, expLimit: new Date(now.getTime() + expiringDays * 24 * 60 * 60 * 1000) },
+          WHERE p."strTenantId" = :tenantId AND (p."dtmExpirationDate" BETWEEN :expToday AND :expLimit
+            OR (p."dtmExpirationDate" >= :expSince AND p."dtmExpirationDate" < :expToday AND COALESCE(material.ingQuantity, 0) > 0)))`,
+        { expToday: day(now), expLimit: day(new Date(now.getTime() + expiringDays * DAY)), expSince: day(new Date(now.getTime() - 30 * DAY)) },
       );
     }
 
