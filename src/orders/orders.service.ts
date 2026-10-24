@@ -13,6 +13,7 @@ import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
 import { assertOpenForAsap, assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
+import { BusinessParamsService, taxOn } from '../config/business-params.service';
 import {
   balanceDue,
   computePaymentStatus,
@@ -61,6 +62,7 @@ export class OrdersService {
     private marketplaceConfigService: MarketplaceConfigService,
     private pricingService: PricingService,
     private giftCardsService: GiftCardsService,
+    private businessParamsService: BusinessParamsService,
   ) {}
 
   /**
@@ -451,6 +453,10 @@ export class OrdersService {
       ? await this.resolvePanelSchedule(tenantId, createDto.scheduledStart, createDto.items || [], !!createDto.allowSlotOverride)
       : null;
     const orderCode = await this.generateOrderCode(tenantId);
+    // IVA/INC del período activo (sin parámetro no hay impuesto), no el que mande el cliente
+    const subtotal = Number(createDto.subtotal) || 0;
+    const discount = Number(createDto.discount) || 0;
+    const tax = taxOn(subtotal, await this.businessParamsService.getParams(tenantId));
 
     const order = this.orderRepository.create({
       tenantId,
@@ -468,10 +474,10 @@ export class OrdersService {
       scheduledEnd: slot?.end || null,
       // Enlace de seguimiento para compartir con el cliente
       trackingToken: randomBytes(24).toString('hex'),
-      subtotal: createDto.subtotal || 0,
-      tax: createDto.tax || 0,
-      discount: createDto.discount || 0,
-      total: createDto.total || 0,
+      subtotal,
+      tax,
+      discount,
+      total: subtotal + tax - discount,
     });
     this.enterStage(order, OrderStatus.DRAFT, await this.getTimingSettings(tenantId));
 
@@ -1027,6 +1033,12 @@ export class OrdersService {
       ...rest,
       deliveryDate: rest.deliveryDate ? new Date(rest.deliveryDate) : order.deliveryDate,
     });
+    // Pedido del panel con valores nuevos: el impuesto sale del período activo
+    if (order.source === 'PANEL' && ['subtotal', 'tax', 'total', 'discount'].some((k) => k in rest)) {
+      const subtotal = Number(order.subtotal) || 0;
+      order.tax = taxOn(subtotal, await this.businessParamsService.getParams(tenantId));
+      order.total = subtotal + order.tax - (Number(order.discount) || 0);
+    }
 
     // Franja: null/'' la quita; una hora nueva se valida como al crear
     if (scheduledStart === null || scheduledStart === '') {

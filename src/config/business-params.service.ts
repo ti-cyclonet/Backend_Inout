@@ -8,6 +8,17 @@ export function parseBooleanParam(value: unknown): boolean {
   return ['si', 's', 'true', '1', 'yes', 'y'].includes(v);
 }
 
+/** % de impuesto del período: el INC (restaurantes) manda sobre el IVA; sin parámetros, 0. */
+export function effectiveTaxPercent(params: Record<string, any>): number {
+  const inc = Number(params?.INC_PORCENTAJE || 0);
+  return inc > 0 ? inc : Number(params?.IVA_PORCENTAJE || 0);
+}
+
+/** Impuesto sobre un subtotal con los parámetros del período, redondeado al centavo. */
+export function taxOn(subtotal: number, params: Record<string, any>): number {
+  return Math.round((Number(subtotal) || 0) * effectiveTaxPercent(params)) / 100;
+}
+
 /** Cuánto se cachea el valor del plan (cambia solo al cambiar de plan). */
 const PLAN_COST_TTL_MS = 10 * 60 * 1000;
 
@@ -125,12 +136,7 @@ export class BusinessParamsService {
    * Retorna { tax, taxType, taxPercent }
    */
   async calculateTax(tenantId: string, subtotal: number): Promise<number> {
-    const params = await this.getParams(tenantId);
-    // INC takes precedence for restaurants/food services
-    const incPercent = Number(params['INC_PORCENTAJE'] || 0);
-    const ivaPercent = Number(params['IVA_PORCENTAJE'] || 0);
-    const effectiveRate = incPercent > 0 ? incPercent : ivaPercent;
-    return subtotal * (effectiveRate / 100);
+    return taxOn(subtotal, await this.getParams(tenantId));
   }
 
   /**
