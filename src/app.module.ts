@@ -61,6 +61,7 @@ import { OrderPayment } from './orders/entities/order-payment.entity';
 import { OrderSettings } from './orders/entities/order-settings.entity';
 import { TenantBranding } from './tenant-branding/entities/tenant-branding.entity';
 import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { CombosModule } from './combos/combos.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { Promotion } from './promotions/entities/promotion.entity';
@@ -116,6 +117,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
     WarehousesModule,
     CreditModule,
     DashboardModule,
+    FeedbackModule,
   ],
 })
 export class AppModule implements NestModule {
