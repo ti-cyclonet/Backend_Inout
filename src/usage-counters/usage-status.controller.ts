@@ -60,12 +60,17 @@ export class UsageStatusController {
         );
         if (!temporalLimit || !limitsResponse.startDate) return null;
         const startDate = new Date(limitsResponse.startDate);
-        const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + temporalLimit.maxValue);
+        // La fecha de fin del contrato manda: si en Authoriza se amplía el
+        // plazo, la vigencia se ajusta. nDiasUso solo aplica si no la hay.
+        let endDate = limitsResponse.endDate ? new Date(limitsResponse.endDate) : null;
+        if (!endDate || isNaN(endDate.getTime()) || endDate <= startDate) {
+          endDate = new Date(startDate);
+          endDate.setDate(endDate.getDate() + temporalLimit.maxValue);
+        }
         return {
           startDate: limitsResponse.startDate,
           endDate: endDate.toISOString(),
-          totalDays: temporalLimit.maxValue,
+          totalDays: Math.round((endDate.getTime() - startDate.getTime()) / 86400000),
         };
       })(),
       variables,
