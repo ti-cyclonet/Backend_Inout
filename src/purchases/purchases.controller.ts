@@ -1,6 +1,6 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { PurchasesService } from './purchases.service';
-import { CreatePurchaseRecordDto, CreateBulkPurchaseDto } from './dto/create-purchase-record.dto';
+import { CreatePurchaseRecordDto, CreateBulkPurchaseDto, UpdatePurchaseExpirationDto } from './dto/create-purchase-record.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -28,5 +28,12 @@ export class PurchasesController {
   findByMaterial(@Param('materialId') materialId: string, @Request() req) {
     const tenantId = req.user.tenantId;
     return this.purchasesService.findByMaterial(materialId, tenantId);
+  }
+
+  /** Corrige o quita la fecha de vencimiento de un lote (compra). */
+  @Patch(':id/expiration')
+  @Roles('admin', 'operator')
+  updateExpiration(@Param('id') id: string, @Body() dto: UpdatePurchaseExpirationDto, @Request() req) {
+    return this.purchasesService.updateExpiration(id, dto.expirationDate ?? null, req.user.tenantId);
   }
 }

@@ -71,3 +71,10 @@ export class CreateBulkPurchaseDto {
   @Type(() => BulkPurchaseItemDto)
   items: BulkPurchaseItemDto[];
 }
+
+export class UpdatePurchaseExpirationDto {
+  /** YYYY-MM-DD; null o vacío quita el vencimiento. */
+  @IsDateString()
+  @IsOptional()
+  expirationDate?: string | null;
+}
