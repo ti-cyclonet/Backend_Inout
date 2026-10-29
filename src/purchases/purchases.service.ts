@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { PurchaseRecord } from './entities/purchase-record.entity';
@@ -61,6 +61,22 @@ export class PurchasesService {
       relations: ['supplier'],
       order: { dtmDate: 'DESC' },
     });
+  }
+
+  async updateExpiration(id: string, expirationDate: string | null, tenantId: string): Promise<PurchaseRecord> {
+    if (!/^[0-9a-f-]{36}$/i.test(id || '')) throw new NotFoundException('Compra no encontrada');
+    const purchase = await this.purchaseRepository.findOne({ where: { strId: id, strTenantId: tenantId } });
+    if (!purchase) throw new NotFoundException('Compra no encontrada');
+    if (expirationDate) {
+      const day = String(expirationDate).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || isNaN(new Date(day).getTime())) {
+        throw new BadRequestException('Fecha de vencimiento inválida');
+      }
+      purchase.dtmExpirationDate = day as any;
+    } else {
+      purchase.dtmExpirationDate = null;
+    }
+    return this.purchaseRepository.save(purchase);
   }
 
   async createBulk(bulkDto: CreateBulkPurchaseDto, tenantId: string) {
