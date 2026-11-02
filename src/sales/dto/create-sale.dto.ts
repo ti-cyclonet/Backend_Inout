@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsIn, IsNotEmpty, MaxLength } from 'class-validator';
 import { PAYMENT_METHODS } from '../../credit/entities/receivable-payment.entity';
 
 export class CreateSaleDto {
@@ -53,4 +53,11 @@ export class CreateSaleDto {
   @IsOptional()
   @IsIn(PAYMENT_METHODS as unknown as string[])
   paymentMethod?: string;
+}
+
+export class VoidSaleDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
+  reason: string;
 }

@@ -59,4 +59,19 @@ export class Sale {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   dtmCreationDate: Date;
+
+  /**
+   * Anulada (error de registro): el stock volvió al inventario y la venta deja
+   * de contar en paneles, cartera y estadísticas. Se conserva para no dejar
+   * huecos en la numeración de facturas.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  dtmVoidedAt: Date | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  strVoidReason: string | null;
+
+  /** Correo de quien la anuló. */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  strVoidedBy: string | null;
 }

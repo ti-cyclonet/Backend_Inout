@@ -203,6 +203,8 @@ export class InvoicePdfService {
     return {
       pageSize: 'LETTER',
       pageMargins: [40, 40, 40, 60],
+      // Venta anulada: la factura se puede consultar, marcada como tal
+      ...(sale.dtmVoidedAt ? { watermark: { text: 'ANULADA', color: '#dc2626', opacity: 0.18, bold: true } } : {}),
       content: [
         // Header - Business info
         {
