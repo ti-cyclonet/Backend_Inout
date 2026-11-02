@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, IsNull } from 'typeorm';
 import { Sale } from './entities/sale.entity';
 import { Product } from '../products/entities/product.entity';
 import { CompositionTwo } from '../products/entities/composition-two.entity';
@@ -9,8 +9,8 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { BusinessParamsService, taxOn } from '../config/business-params.service';
-import { CreditService } from '../credit/credit.service';
-import { applyStockDelta, assertStockAvailable, movementTarget, StockLine } from '../common/stock-availability';
+import { addDays, CreditService, todayCo } from '../credit/credit.service';
+import { applyStockDelta, assertStockAvailable, movementTarget, ResolvedStockLine, StockLine } from '../common/stock-availability';
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
 import { computeSaleProfit } from '../common/sale-profit';
@@ -72,7 +72,26 @@ export class SalesService {
     return 'ABC';
   }
 
+  /**
+   * Fecha de la venta (AAAA-MM-DD): se puede registrar una venta de días
+   * anteriores, hasta MAX_BACKDATE_DAYS atrás. Una fecha futura se toma como
+   * hoy (las versiones anteriores de la app mandaban el día en UTC, que en la
+   * noche de Colombia ya es mañana).
+   */
+  private saleDay(dtmDate: string): string {
+    const today = todayCo();
+    const day = String(dtmDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > today) return today;
+    if (day < addDays(today, -SalesService.MAX_BACKDATE_DAYS)) {
+      throw new BadRequestException(`La fecha de la venta no puede ser de hace más de ${SalesService.MAX_BACKDATE_DAYS} días.`);
+    }
+    return day;
+  }
+
+  static readonly MAX_BACKDATE_DAYS = 60;
+
   async create(createDto: CreateSaleDto, tenantId: string) {
+    createDto.dtmDate = this.saleDay(createDto.dtmDate);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -236,12 +255,67 @@ export class SalesService {
     }
   }
 
-  async findAll(tenantId: string) {
-    const sales = await this.saleRepository
+  /**
+   * Anula una venta registrada por error: devuelve al inventario lo que salió
+   * con ella (según sus movimientos de salida), anula su cuenta por cobrar si
+   * fue a crédito (solo sin abonos) y la marca como anulada.
+   */
+  async voidSale(tenantId: string, id: string, reason: string, actorEmail?: string) {
+    const why = String(reason || '').trim();
+    if (!why) throw new BadRequestException('Escribe el motivo de la anulación.');
+
+    return this.dataSource.transaction(async (manager) => {
+      const sale = await manager.findOne(Sale, { where: { strId: id, strTenantId: tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (!sale) throw new NotFoundException('Venta no encontrada');
+      if (sale.dtmVoidedAt) throw new BadRequestException(`La venta ${sale.strInvoiceCode} ya está anulada.`);
+      const code = sale.strInvoiceCode || sale.strId;
+
+      if (sale.paymentType === 'CREDITO') {
+        await this.creditService.voidReceivableForSource(manager, tenantId, 'SALE', sale.strId, `Venta ${code} anulada: ${why}`);
+      }
+
+      // Lo que salió del inventario con la venta vuelve a entrar, ítem por ítem
+      const outs = await manager.find(InventoryMovement, {
+        where: { strTenantId: tenantId, strReferenceId: sale.strId, strType: 'OUT', strReason: 'SALE' },
+      });
+      const today = todayCo();
+      for (const m of outs) {
+        const line = {
+          itemType: m.strMaterialId ? 'material' : m.strTransformedMaterialId ? 'material_t' : m.strComboId ? 'kit' : 'product',
+          id: m.strMaterialId || m.strTransformedMaterialId || m.strComboId || m.strProductId,
+          baseQuantity: Number(m.fltQuantity) || 0,
+        } as ResolvedStockLine;
+        if (!line.id || line.baseQuantity <= 0) continue;
+        await applyStockDelta(manager, tenantId, [line], { onHand: 1 });
+        await manager.save(InventoryMovement, {
+          strTenantId: tenantId,
+          ...movementTarget(line),
+          strType: 'IN',
+          strReason: 'SALE_VOID',
+          fltQuantity: m.fltQuantity,
+          fltUnitPrice: m.fltUnitPrice,
+          strReferenceId: sale.strId,
+          strNotes: `Anulación venta ${code}`,
+          dtmDate: today as any,
+        });
+      }
+
+      sale.dtmVoidedAt = new Date();
+      sale.strVoidReason = why.slice(0, 300);
+      sale.strVoidedBy = actorEmail || null;
+      await manager.save(sale);
+      return { message: `Venta ${code} anulada`, sale, restoredItems: outs.length };
+    });
+  }
+
+  async findAll(tenantId: string, includeVoided = false) {
+    const qb = this.saleRepository
       .createQueryBuilder('sale')
-      .where('sale.strTenantId = :tenantId', { tenantId })
-      .orderBy('sale.dtmCreationDate', 'DESC')
-      .getMany();
+      .where('sale.strTenantId = :tenantId', { tenantId });
+    // Las anuladas solo se piden para la lista de ventas; el resto de pantallas
+    // (paneles, Excel del día, clientes) suma solo ventas vigentes.
+    if (!includeVoided) qb.andWhere('sale.dtmVoidedAt IS NULL');
+    const sales = await qb.orderBy('sale.dtmCreationDate', 'DESC').getMany();
 
     // Cargar productos
     const salesWithProducts = await Promise.all(
@@ -258,7 +332,7 @@ export class SalesService {
 
   async findByProduct(productId: string) {
     return this.saleRepository.find({
-      where: { strProductId: productId },
+      where: { strProductId: productId, dtmVoidedAt: IsNull() },
       order: { dtmCreationDate: 'DESC' },
     });
   }
@@ -266,7 +340,7 @@ export class SalesService {
   async getStats(tenantId: string) {
     // Ventas directas
     const sales = await this.saleRepository.find({
-      where: { strTenantId: tenantId },
+      where: { strTenantId: tenantId, dtmVoidedAt: IsNull() },
     });
 
     const directSalesCount = sales.length;
@@ -310,7 +384,7 @@ export class SalesService {
 
   async getChartData(tenantId: string) {
     const sales = await this.saleRepository.find({
-      where: { strTenantId: tenantId },
+      where: { strTenantId: tenantId, dtmVoidedAt: IsNull() },
       order: { dtmCreationDate: 'ASC' },
       relations: [],
     });

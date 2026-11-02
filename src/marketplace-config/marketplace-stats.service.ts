@@ -59,11 +59,11 @@ export class MarketplaceStatsService {
            SELECT linea->>'productId' AS id, COALESCE((linea->>'quantity')::numeric, 0) AS cantidad
              FROM manufacturing.sales s
              CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(s.items) = 'array' THEN s.items ELSE '[]'::jsonb END) AS linea
-            WHERE s."strTenantId" = $1
+            WHERE s."strTenantId" = $1 AND s."dtmVoidedAt" IS NULL
            UNION ALL
            SELECT s."strProductId" AS id, s."fltQuantity" AS cantidad
              FROM manufacturing.sales s
-            WHERE s."strTenantId" = $1
+            WHERE s."strTenantId" = $1 AND s."dtmVoidedAt" IS NULL
               AND (s.items IS NULL OR jsonb_typeof(s.items) <> 'array' OR jsonb_array_length(s.items) = 0)
          ) t
          WHERE id IS NOT NULL

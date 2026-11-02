@@ -38,7 +38,8 @@ export function saleAt(sale: { dtmDate?: unknown; dtmCreationDate?: unknown }): 
 }
 
 /** Filtro SQL de ventas desde `from` por fecha de venta o de registro (alias `s`). */
-export const SALES_SINCE_SQL = '(s.dtmDate >= :fromDay OR s.dtmCreationDate >= :from)';
+/** Ventas vigentes (sin anular) desde una fecha. Alias de la venta: `s`. */
+export const SALES_SINCE_SQL = '(s.dtmDate >= :fromDay OR s.dtmCreationDate >= :from) AND s.dtmVoidedAt IS NULL';
 export const salesSinceParams = (from: Date) => ({ from, fromDay: dayKey(from) });
 
 export interface ExpiringLotRow { materialId: string; name: string; expiresAt: Date | string; quantity: unknown }
