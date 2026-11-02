@@ -1,6 +1,6 @@
 import { BadRequestException, HttpException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Sale } from '../sales/entities/sale.entity';
 import { Order } from '../orders/entities/order.entity';
 import { BusinessParamsService } from '../config/business-params.service';
@@ -80,7 +80,7 @@ export class FeedbackService {
 
     const t = user.tenantId;
     const [salesCount, marketOrders, firstSale, firstOrder] = await Promise.all([
-      this.sales.count({ where: { strTenantId: t } }),
+      this.sales.count({ where: { strTenantId: t, dtmVoidedAt: IsNull() } }),
       this.orders.count({ where: { tenantId: t, source: 'MARKET' } as any }),
       this.sales.createQueryBuilder('s').select('MIN(s.dtmCreationDate)', 'at').where('s.strTenantId = :t', { t }).getRawOne(),
       this.orders.createQueryBuilder('o').select('MIN(o.createdAt)', 'at').where('o.tenantId = :t', { t }).getRawOne(),

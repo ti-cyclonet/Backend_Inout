@@ -248,7 +248,7 @@ export class CreditService {
   /** Compras y cartera del cliente con este negocio (se congela al validar). */
   private async internalHistory(tenantId: string, customerId: string) {
     const [sales] = await this.dataSource.query(
-      `SELECT COUNT(*)::int AS count, COALESCE(SUM(total), 0) AS total FROM manufacturing.sales WHERE "strTenantId" = $1 AND "strCustomerId" = $2`,
+      `SELECT COUNT(*)::int AS count, COALESCE(SUM(total), 0) AS total FROM manufacturing.sales WHERE "strTenantId" = $1 AND "strCustomerId" = $2 AND "dtmVoidedAt" IS NULL`,
       [tenantId, customerId],
     );
     const [orders] = await this.dataSource.query(
@@ -470,6 +470,22 @@ export class CreditService {
     r.balance = 0;
     r.voidReason = dto.reason.trim();
     return this.receivableRepo.save(r);
+  }
+
+  /**
+   * Anula la cuenta por cobrar de una venta/pedido que se anula, dentro de la
+   * transacción del llamador. Con abonos no se puede: lanza 400.
+   */
+  async voidReceivableForSource(manager: EntityManager, tenantId: string, sourceType: 'SALE' | 'ORDER', sourceId: string, reason: string) {
+    const r = await manager.findOne(Receivable, { where: { tenantId, sourceType, sourceId }, lock: { mode: 'pessimistic_write' } });
+    if (!r || r.status === ReceivableStatus.ANULADA) return null;
+    if (num(r.paidAmount) > 0 || num(r.interestPaid) > 0) {
+      throw new BadRequestException(`La cuenta por cobrar ${r.documentCode} ya tiene abonos: no se puede anular la venta.`);
+    }
+    r.status = ReceivableStatus.ANULADA;
+    r.balance = 0;
+    r.voidReason = reason.slice(0, 1000);
+    return manager.save(r);
   }
 
   /** Resumen de cartera: saldos, vencida y antigüedad. */

@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Body, Param, UseGuards, UseInterceptors, Res, NotFoundException } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Post, Body, Param, Query, Req, UseGuards, UseInterceptors, Res, NotFoundException } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { SalesService } from './sales.service';
 import { InvoicePdfService } from './invoice-pdf.service';
-import { CreateSaleDto } from './dto/create-sale.dto';
+import { CreateSaleDto, VoidSaleDto } from './dto/create-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
@@ -27,10 +27,19 @@ export class SalesController {
     return this.salesService.create(createDto, tenantId);
   }
 
+  /** ?anuladas=1 incluye las ventas anuladas (solo la lista de ventas las muestra). */
   @UseGuards(JwtAuthGuard)
   @Get()
-  findAll(@GetTenantId() tenantId: string) {
-    return this.salesService.findAll(tenantId);
+  findAll(@GetTenantId() tenantId: string, @Query('anuladas') anuladas?: string) {
+    return this.salesService.findAll(tenantId, anuladas === '1' || anuladas === 'true');
+  }
+
+  /** Anular una venta registrada por error: devuelve el stock. Solo administrador. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post(':id/void')
+  @Roles('admin')
+  voidSale(@Param('id') id: string, @Body() dto: VoidSaleDto, @GetTenantId() tenantId: string, @Req() req: Request) {
+    return this.salesService.voidSale(tenantId, id, dto.reason, (req.user as any)?.email);
   }
 
   @UseGuards(JwtAuthGuard)
