@@ -89,7 +89,7 @@ export class CombosService {
       q(`SELECT "strId", "strName", "fltPrice", "fltCost", "ingQuantity", "ingReservedStock", "intCategoryId", "blnMadeToOrder", "strStatus"
          FROM manufacturing.products WHERE "strTenantId" = $1 ORDER BY "strName"`),
       q(`SELECT "strId", "strName", "strUnitMeasure", "blnForResale", "strSalePresentation", "fltPresentationQuantity", "fltSalePrice", "fltPrice", "ingQuantity", "ingReservedStock", "categoryId", "strStatus"
-         FROM manufacturing.materials WHERE "strTenantId" = $1 ORDER BY "strName"`),
+         FROM manufacturing.materials WHERE "strTenantId" = $1 AND "dtmDeletedAt" IS NULL ORDER BY "strName"`),
       q(`SELECT "strId", "strName", "strUnitMeasure", "blnForResale", "strSalePresentation", "fltPresentationQuantity", "fltSalePrice", "fltPrice", "ingQuantity", "ingReservedStock", "categoryId", "strStatus"
          FROM manufacturing."materials-t" WHERE "strTenantId" = $1 ORDER BY "strName"`),
       q(`SELECT "strId", "strName", "strType", "fltPrice", "strStatus" FROM manufacturing.combos WHERE "strTenantId" = $1 ORDER BY "strName"`),

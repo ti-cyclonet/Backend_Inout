@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { Material } from '../materials/entities/material.entity';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { Product } from '../products/entities/product.entity';
@@ -94,6 +94,7 @@ export class ModulePanelsService {
     return this.purchases.createQueryBuilder('p').innerJoin('p.material', 'm')
       .select(['p.strMaterialId AS "materialId"', 'm.strName AS name', 'p.dtmExpirationDate AS "expiresAt"', 'p.fltQuantity AS quantity'])
       .where('p.strTenantId = :t', { t: tenantId })
+      .andWhere('m.dtmDeletedAt IS NULL')
       .andWhere(`(p.dtmExpirationDate BETWEEN :today AND :limit
         OR (p.dtmExpirationDate >= :since AND p.dtmExpirationDate < :today AND COALESCE(m.ingQuantity, 0) > 0))`, {
         today: dayKey(now),
@@ -109,7 +110,7 @@ export class ModulePanelsService {
     const prevMonthStart = bogotaMonthStart(now, -1);
     const since30 = new Date(now.getTime() - 30 * DAY_MS);
     const [materials, composites, movements, purchases, expiring, lotRows] = await Promise.all([
-      this.materials.find({ where: { strTenantId: tenantId } as any }),
+      this.materials.find({ where: { strTenantId: tenantId, dtmDeletedAt: IsNull() } as any }),
       this.materialsT.find({ where: { strTenantId: tenantId } as any }),
       this.movements.createQueryBuilder('m').where('m.strTenantId = :t AND m.dtmCreationDate >= :from', { t: tenantId, from: since30 }).getMany(),
       this.purchases.createQueryBuilder('p').where('p.strTenantId = :t AND p.dtmCreationDate >= :from', { t: tenantId, from: prevMonthStart }).getMany(),
