@@ -96,6 +96,14 @@ export class Material {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: false, default: 0 })
   ingReservedStock: number;
 
+  /**
+   * Eliminado por el usuario. No se borra la fila: el Kardex, las compras, las
+   * ventas y los pedidos la siguen referenciando. Deja de mostrarse en listas,
+   * buscadores, catálogos y paneles (filtro "dtmDeletedAt" IS NULL).
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  dtmDeletedAt: Date | null;
+
   @ManyToOne(() => Category, category => category.materials)
   @JoinColumn({ name: 'categoryId' })
   category: Category;

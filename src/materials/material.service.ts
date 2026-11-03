@@ -13,7 +13,7 @@ import { MaterialImage } from './entities/material-image.entity';
 import { Activity } from './entities/activity.entity';
 import { MaterialT } from '../materials-t/entities/material-t.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { validate as isUUID } from 'uuid';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
@@ -122,7 +122,8 @@ export class MaterialsService {
 
     let queryBuilder = this.materialRepository.createQueryBuilder('material')
       .leftJoinAndSelect('material.category', 'category')
-      .where('material.strTenantId = :tenantId', { tenantId });
+      .where('material.strTenantId = :tenantId', { tenantId })
+      .andWhere('material.dtmDeletedAt IS NULL');
 
     if (search) {
       queryBuilder = queryBuilder.andWhere(
@@ -316,21 +317,74 @@ export class MaterialsService {
     }
   }
 
+  /**
+   * Elimina un material sin borrar su fila: queda marcado (dtmDeletedAt) y
+   * deja de verse y venderse, pero los movimientos, compras, ventas y pedidos
+   * que lo usan conservan su historia. Solo si no tiene stock y ninguna receta
+   * ni combo lo usa.
+   */
   async remove(id: string, tenantId: string) {
-    const material = await this.findOne(id, tenantId);
-
-    if (!material) {
+    const material = await this.materialRepository.findOne({ where: { strId: id, strTenantId: tenantId } });
+    if (!material || material.dtmDeletedAt) {
       throw new NotFoundException(`Material con id '${id}' no encontrado`);
     }
 
-    await this.materialRepository.remove(material);
+    const stock = Number(material.ingQuantity) || 0;
+    const reserved = Number(material.ingReservedStock) || 0;
+    if (stock > 0 || reserved > 0) {
+      throw new BadRequestException(reserved > 0
+        ? `${material.strName} tiene ${reserved} ${material.strUnitMeasure} reservados por pedidos. Entrega o cancela esos pedidos antes de eliminarlo.`
+        : `${material.strName} tiene ${stock} ${material.strUnitMeasure} en stock. Registra la salida en el Kardex antes de eliminarlo.`);
+    }
+
+    const usedIn = await this.materialUsages(id, tenantId);
+    if (usedIn.length) {
+      const list = usedIn.slice(0, 5).join(', ') + (usedIn.length > 5 ? ` y ${usedIn.length - 5} más` : '');
+      throw new BadRequestException(`${material.strName} se usa en ${list}. Quítalo de esas recetas o combos antes de eliminarlo.`);
+    }
+
+    await this.materialRepository.update(
+      { strId: material.strId, strTenantId: tenantId },
+      { dtmDeletedAt: new Date(), strStatus: 'Inactive', blnForResale: false, blnMarketplaceVisible: false },
+    );
     await this.limitEnforcementService.decrement(tenantId, 'nMateriales');
-    return { message: `El material con id '${id}' fue eliminado exitosamente` };
+    await this.activityRepository.save({
+      strTenantId: tenantId,
+      strType: 'material_deleted',
+      strTitle: `Material eliminado: ${material.strName}`,
+      strIcon: 'trash',
+      strEntityId: material.strId,
+    });
+    return { message: `${material.strName} fue eliminado. Su historial se conserva.` };
+  }
+
+  /** Recetas de productos y materiales compuestos, y combos o kits activos, que usan el material. */
+  private async materialUsages(id: string, tenantId: string): Promise<string[]> {
+    const rows: { name: string }[] = await this.dataSource.query(
+      `SELECT 'el producto ' || p."strName" AS name
+         FROM manufacturing.composition_two c JOIN manufacturing.products p ON p."strId" = c."strProductId"
+        WHERE c."strMaterialId" = $1 AND p."strTenantId" = $2
+       UNION
+       SELECT 'el producto ' || p."strName"
+         FROM manufacturing.product_composition c JOIN manufacturing.products p ON p."strId" = c."strProductId"
+        WHERE c."strMaterialId" = $1 AND p."strTenantId" = $2
+       UNION
+       SELECT 'el material compuesto ' || mt."strName"
+         FROM manufacturing."compositionOne" c JOIN manufacturing."materials-t" mt ON mt."strId" = c."strMaterialTId"
+        WHERE c."strComponentMaterialId" = $1 AND mt."strTenantId" = $2
+       UNION
+       SELECT 'el combo ' || co."strName"
+         FROM manufacturing.combo_components cc JOIN manufacturing.combos co ON co."strId" = cc."strComboId"
+        WHERE cc."strItemType" = 'material' AND cc."strItemId" = $1 AND co."strTenantId" = $2 AND co."strStatus" = 'active'
+       ORDER BY 1`,
+      [id, tenantId],
+    );
+    return rows.map((r) => r.name);
   }
 
   async checkMaterialName(strName: string, tenantId: string): Promise<boolean> {
     const material = await this.materialRepository.findOne({ 
-      where: { strName, strTenantId: tenantId } 
+      where: { strName, strTenantId: tenantId, dtmDeletedAt: IsNull() } 
     });
     return !material;
   }
@@ -372,14 +426,6 @@ export class MaterialsService {
     }
   }
 
-  async deleteAllMaterials() {
-    try {
-      return await this.materialRepository.createQueryBuilder('material').delete().where({}).execute();
-    } catch (error) {
-      this.handleDBException(error);
-    }
-  }
-
   private handleDBException(error: any) {
     // Errores de validación ya tipados (400/404) no deben volverse un 500 genérico
     if (error instanceof HttpException) throw error;
@@ -391,7 +437,7 @@ export class MaterialsService {
   async getMetrics(tenantId: string) {
     // Get regular materials only (excluding transformed materials)
     const materials = await this.materialRepository.find({
-      where: { strTenantId: tenantId }
+      where: { strTenantId: tenantId, dtmDeletedAt: IsNull() }
     });
     
     const totalMaterials = materials.length;
@@ -545,7 +591,8 @@ export class MaterialsService {
           const existingMaterial = await this.materialRepository.findOne({
             where: { 
               strName: materialName.toUpperCase(), 
-              strTenantId: tenantId 
+              strTenantId: tenantId,
+              dtmDeletedAt: IsNull()
             }
           });
 

@@ -6,6 +6,8 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 import { GetTenantId } from 'src/common/decorators/get-tenant-id.decorator';
 import { CheckLimit } from 'src/usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from 'src/usage-counters/guards/limit-enforcement.guard';
@@ -15,11 +17,6 @@ import * as XLSX from 'xlsx';
 @Controller('materials') 
 export class MaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}
-
-  @Delete('delete-all')
-  deleteAll() {
-    return this.materialsService.deleteAllMaterials();
-  }
 
   @UseGuards(JwtAuthGuard, LimitEnforcementGuard)
   @Post()
@@ -85,8 +82,10 @@ export class MaterialsController {
     return this.materialsService.update(id, updateMaterialDto, tenantId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  /** Elimina el material sin borrar su historial (ver MaterialsService.remove). Solo administrador. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Delete(':id')
+  @Roles('admin')
   remove(@Param('id', new ParseUUIDPipe()) id: string, @GetTenantId() tenantId: string) {
     return this.materialsService.remove(id, tenantId);
   }

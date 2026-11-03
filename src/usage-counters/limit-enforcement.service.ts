@@ -308,7 +308,7 @@ export class LimitEnforcementService {
 
     // Count actual records for each variable
     const countQueries: Record<string, string> = {
-      nMateriales: `SELECT COUNT(*) as count FROM manufacturing.materials WHERE "strTenantId" = $1`,
+      nMateriales: `SELECT COUNT(*) as count FROM manufacturing.materials WHERE "strTenantId" = $1 AND "dtmDeletedAt" IS NULL`,
       nMaterialesT: `SELECT COUNT(*) as count FROM manufacturing."materials-t" WHERE "strTenantId" = $1`,
       nProductos: `SELECT COUNT(*) as count FROM manufacturing.products WHERE "strTenantId" = $1`,
       nLotes: `SELECT COUNT(*) as count FROM manufacturing.product_productions WHERE "strTenantId" = $1`,
