@@ -900,6 +900,7 @@ export class ProductsService {
     const materials = await this.materialRepository
       .createQueryBuilder('material')
       .where('material.strTenantId = :tenantId', { tenantId })
+      .andWhere('material.dtmDeletedAt IS NULL')
       .andWhere('material.ingMinStock IS NOT NULL')
       .andWhere('material.ingMinStock > 0')
       .andWhere('material.ingQuantity < material.ingMinStock')

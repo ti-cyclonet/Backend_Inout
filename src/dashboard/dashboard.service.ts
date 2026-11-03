@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { Sale } from '../sales/entities/sale.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderPayment } from '../orders/entities/order-payment.entity';
@@ -81,11 +81,12 @@ export class DashboardService {
       this.customersService.findByTenantId(tenantId, authorization).catch(() => []) as Promise<any[]>,
       Promise.resolve(0),
       this.products.find({ where: { strTenantId: tenantId } as any }),
-      this.materials.find({ where: { strTenantId: tenantId } as any }),
+      this.materials.find({ where: { strTenantId: tenantId, dtmDeletedAt: IsNull() } as any }),
       this.purchases.createQueryBuilder('p')
         .leftJoin('p.material', 'm')
         .select(['p.strId AS id', 'm.strName AS name', 'p.dtmExpirationDate AS "expiresAt"', 'p.fltQuantity AS quantity'])
         .where('p.strTenantId = :t', { t: tenantId })
+        .andWhere('m.dtmDeletedAt IS NULL')
         .andWhere('p.dtmExpirationDate BETWEEN :now AND :limit', { now, limit: in15Days })
         .orderBy('p.dtmExpirationDate', 'ASC').limit(5).getRawMany(),
     ]);

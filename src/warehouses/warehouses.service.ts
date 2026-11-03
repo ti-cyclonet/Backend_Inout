@@ -226,7 +226,7 @@ export class WarehousesService implements OnModuleInit {
   // ═══════ PHYSICAL COUNT ═══════
   async createPhysicalCount(data: any, tenantId: string) {
     // Load all materials for the tenant
-    const materials = await this.materialRepo.find({ where: { strTenantId: tenantId, strStatus: 'Active' } });
+    const materials = await this.materialRepo.find({ where: { strTenantId: tenantId, strStatus: 'Active', dtmDeletedAt: IsNull() } });
 
     const items = materials.map(m => ({
       materialId: m.strId,
