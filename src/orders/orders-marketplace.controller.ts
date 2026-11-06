@@ -6,12 +6,14 @@ import { CreateMarketplaceOrderDto, MarketplaceSlotsQueryDto } from './dto/creat
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrderPaymentDto } from './dto/order-payment.dto';
+import { LimitEnforcementService, STORE_PAUSED_MESSAGE } from '../usage-counters/limit-enforcement.service';
 
 @Controller('orders')
 export class OrdersMarketplaceController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly orderPaymentsService: OrderPaymentsService,
+    private readonly limitEnforcementService: LimitEnforcementService,
   ) {}
 
   /** Franjas disponibles de un día para lo que hay en el carrito (público). */
@@ -48,7 +50,9 @@ export class OrdersMarketplaceController {
 
   /** Checkout de invitado, sin sesión — sigue siendo la forma "por defecto" de comprar. */
   @Post('marketplace')
-  createFromMarketplace(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {
+  async createFromMarketplace(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {
+    // Sin sesión no pasa por TrialLockInterceptor: prueba vencida → tienda en pausa
+    await this.limitEnforcementService.assertNotTrialLocked(createDto.tenantId, STORE_PAUSED_MESSAGE);
     return this.ordersService.createFromMarketplace(createDto, this.requestMeta(req));
   }
 

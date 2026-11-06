@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { LimitEnforcementService } from './limit-enforcement.service';
 import { VARIABLE_DISPLAY_NAMES, ALL_VARIABLE_NAMES } from './constants/resource-variable-map';
+import { planTimeline } from './trial-lock';
 
 @Controller('usage-status')
 export class UsageStatusController {
@@ -54,25 +55,7 @@ export class UsageStatusController {
       tenantId,
       packageName: limitsResponse.packageName,
       isBillable: limitsResponse.isBillable,
-      planTimeline: (() => {
-        const temporalLimit = limitsResponse.limits.find(
-          (l) => l.variableName === 'nDiasUso' && l.maxValue > 0,
-        );
-        if (!temporalLimit || !limitsResponse.startDate) return null;
-        const startDate = new Date(limitsResponse.startDate);
-        // La fecha de fin del contrato manda: si en Authoriza se amplía el
-        // plazo, la vigencia se ajusta. nDiasUso solo aplica si no la hay.
-        let endDate = limitsResponse.endDate ? new Date(limitsResponse.endDate) : null;
-        if (!endDate || isNaN(endDate.getTime()) || endDate <= startDate) {
-          endDate = new Date(startDate);
-          endDate.setDate(endDate.getDate() + temporalLimit.maxValue);
-        }
-        return {
-          startDate: limitsResponse.startDate,
-          endDate: endDate.toISOString(),
-          totalDays: Math.round((endDate.getTime() - startDate.getTime()) / 86400000),
-        };
-      })(),
+      planTimeline: planTimeline(limitsResponse),
       variables,
     };
   }
@@ -80,6 +63,15 @@ export class UsageStatusController {
   /**
    * Get warnings for variables approaching their limit (>= 80%).
    */
+  /**
+   * Público (tienda): ¿recibe pedidos? No, si la prueba gratis del negocio
+   * venció y no pidió el cambio de plan.
+   */
+  @Get('store/:tenantId')
+  async storeStatus(@Param('tenantId') tenantId: string) {
+    return { ordersPaused: await this.limitEnforcementService.isTrialLocked(tenantId) };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('warnings')
   async getUsageWarnings(@GetTenantId() tenantId: string) {

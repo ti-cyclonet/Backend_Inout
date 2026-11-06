@@ -11,6 +11,10 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { UsageCounter } from './entities/usage-counter.entity';
 import { ALL_VARIABLE_NAMES, VARIABLE_DISPLAY_NAMES } from './constants/resource-variable-map';
+import { TRIAL_EXPIRED, isTrialLocked } from './trial-lock';
+
+export const TRIAL_EXPIRED_MESSAGE = 'El periodo de prueba de InOut terminó. Para seguir, el administrador de la cuenta debe elegir un plan en Mi plan.';
+export const STORE_PAUSED_MESSAGE = 'Esta tienda no está recibiendo pedidos por ahora.';
 
 interface TenantLimitsResponse {
   contractId: string;
@@ -18,6 +22,8 @@ interface TenantLimitsResponse {
   isBillable: boolean;
   startDate: string | null;
   endDate: string | null;
+  /** Cambio de plan pedido y aún sin activar (Authoriza). */
+  pendingUpgrade?: boolean;
   limits: {
     variableName: string;
     displayName: string;
@@ -246,6 +252,21 @@ export class LimitEnforcementService {
    */
   invalidateCache(tenantId: string): void {
     this.limitsCache.delete(tenantId);
+  }
+
+  /** ¿Prueba vencida sin cambio de plan pedido? Si no se puede saber, no bloquea. */
+  async isTrialLocked(tenantId: string): Promise<boolean> {
+    try {
+      return isTrialLocked(await this.fetchLimits(tenantId));
+    } catch {
+      return false;
+    }
+  }
+
+  async assertNotTrialLocked(tenantId: string, message = TRIAL_EXPIRED_MESSAGE): Promise<void> {
+    if (await this.isTrialLocked(tenantId)) {
+      throw new ForbiddenException({ error: TRIAL_EXPIRED, message });
+    }
   }
 
   /**
