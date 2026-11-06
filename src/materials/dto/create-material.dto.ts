@@ -4,6 +4,12 @@ export class CreateMaterialDto {
   @IsString()
   strName: string;
 
+  /** Marca (opcional). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  strBrand?: string | null;
+
   @IsInt()
   ingQuantity: number;
 

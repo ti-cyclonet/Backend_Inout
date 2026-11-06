@@ -13,6 +13,12 @@ export class CreateMaterialTDto {
   @IsString()
   strName: string;
 
+  /** Marca (opcional). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  strBrand?: string | null;
+
   /** Al crear: cantidad a producir ahora (en strUnitMeasure). */
   @IsNumber()
   @IsOptional()
