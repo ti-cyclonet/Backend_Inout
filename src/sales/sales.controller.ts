@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Body, Param, Query, Req, UseGuards, UseInterceptors, Res, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, UseGuards, UseInterceptors, Res, NotFoundException, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { SalesService } from './sales.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { SaleReceiptMailService } from './sale-receipt-mail.service';
+import { PROOF_MAX_BYTES, SalePaymentProofService } from './sale-payment-proof.service';
 import { CreateSaleDto, SendReceiptEmailDto, VoidSaleDto } from './dto/create-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -18,7 +20,17 @@ export class SalesController {
     private readonly salesService: SalesService,
     private readonly invoicePdfService: InvoicePdfService,
     private readonly receiptMail: SaleReceiptMailService,
+    private readonly paymentProof: SalePaymentProofService,
   ) {}
+
+  /** Volante del datáfono / comprobante del pago (foto y referencia), opcional. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post(':id/payment-proof')
+  @Roles('admin', 'operator')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: PROOF_MAX_BYTES + 1, files: 1 } }))
+  attachPaymentProof(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Body('reference') reference: string, @GetTenantId() tenantId: string) {
+    return this.paymentProof.attach(tenantId, id, file, reference);
+  }
 
   /** Envía al cliente el comprobante (tiquete en PDF, generado por la app) por correo. */
   @UseGuards(JwtAuthGuard, RolesGuard)
