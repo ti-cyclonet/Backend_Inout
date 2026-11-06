@@ -66,7 +66,8 @@ export class SaleReceiptMailService {
     let params: Record<string, any> = {};
     try { params = await this.businessParams.getParams(tenantId); } catch { /* sin parámetros */ }
     let logoUrl: string | null = null;
-    try { logoUrl = (await this.branding.get(tenantId)).logoPdfUrl; } catch { /* sin logo */ }
+    let note: string | null = null;
+    try { const b = await this.branding.get(tenantId); logoUrl = b.logoPdfUrl; note = b.receiptNote; } catch { /* sin logo ni nota */ }
     const name = String(params['NEGOCIO_NOMBRE'] ?? '').trim() || 'Tu tienda';
     const info = [params['NEGOCIO_NIT'] ? `NIT ${params['NEGOCIO_NIT']}` : '', params['NEGOCIO_DIRECCION'], params['NEGOCIO_TELEFONO'] ? `Tel. ${params['NEGOCIO_TELEFONO']}` : '']
       .filter(Boolean).map(esc).join(' · ');
@@ -105,6 +106,9 @@ export class SaleReceiptMailService {
       totalsRows,
       total: money(sale.total),
       paymentText: esc(paymentText),
+      receiptNote: note
+        ? `<p style="margin:16px 0 0;padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #e5e7eb;font-size:13px;color:#374151;">${esc(note).replace(/\n/g, '<br>')}</p>`
+        : '',
       year: String(new Date().getFullYear()),
     };
   }

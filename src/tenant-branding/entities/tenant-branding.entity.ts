@@ -22,6 +22,13 @@ export class TenantBranding {
   @Column({ type: 'varchar', length: 255, nullable: true })
   logoPublicId: string | null;
 
+  /**
+   * Nota del negocio al pie del comprobante de venta (tiquete, PDF, WhatsApp
+   * y correo). Ej.: «El domicilio se acuerda con el domiciliario».
+   */
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  receiptNote: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
