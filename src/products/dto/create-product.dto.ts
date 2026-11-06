@@ -46,6 +46,12 @@ export class CreateProductDto {
   @IsString()
   strName: string;
 
+  /** Marca (opcional). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  strBrand?: string | null;
+
   @IsString()
   @IsOptional()
   strDescription?: string;

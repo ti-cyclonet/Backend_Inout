@@ -15,6 +15,10 @@ export class Product {
   @Column({ type: 'varchar', length: 100 })
   strName: string;
 
+  /** Marca (opcional): no todos los artículos la tienen. */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  strBrand: string | null;
+
   @Column({ type: 'text', nullable: true })
   strDescription: string;
 

@@ -52,6 +52,7 @@ export function mapResaleItem(material: any, itemType: 'material' | 'material_t'
     strCode: material.strCode,
     strName: `${material.strName} - ${material.strSalePresentation}`,
     strBaseName: material.strName,
+    strBrand: material.strBrand ?? null,
     strSalePresentation: material.strSalePresentation,
     fltPresentationQuantity: factor,
     strUnitMeasure: material.strUnitMeasure,
