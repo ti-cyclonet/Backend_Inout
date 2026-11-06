@@ -66,11 +66,13 @@ export class ModulePanelsService {
       ...sales.map((s) => ({
         at: saleAt(s), total: saleTotal(s), customerId: s.strCustomerId || null, customerName: s.customerName || '',
         paymentType: (s.paymentType || 'CONTADO').toUpperCase(), paymentMethod: (s.paymentMethod || '').toUpperCase(),
+        payments: Array.isArray(s.payments) && s.payments.length ? s.payments : null,
         channel: 'Venta directa', lines: soldLines(s.items, { productId: s.strProductId, quantity: s.fltQuantity, total: saleTotal(s) }),
       })),
       ...orders.map((o) => ({
         at: orderSoldAt(o), total: num(o.total), customerId: o.customerId || null, customerName: (o.customerName || '').split(' | ')[0],
         paymentType: (o.paymentType || 'CONTADO').toUpperCase(), paymentMethod: (o.paymentMethod || '').toUpperCase(),
+        payments: null as { method: string; amount: number }[] | null,
         channel: o.source === 'MARKET' ? 'CycloNet Market' : o.source === 'STORE' ? 'Tienda online' : 'Pedido', lines: soldLines(o.items),
       })),
     ].filter((t) => t.at);
@@ -283,6 +285,18 @@ export class ModulePanelsService {
       return [...m.values()].sort((a, b) => b.value - a.value).map((g) => ({ ...g, value: Math.round(g.value) }));
     };
     const METHODS: Record<string, string> = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', TARJETA: 'Tarjeta', NEQUI: 'Nequi', DAVIPLATA: 'Daviplata', PSE: 'PSE', OTRO: 'Otro' };
+    // Por medio de pago: un pago dividido suma cada parte a su medio
+    const byMethod = () => {
+      const label = (method: string) => METHODS[method] || (method ? method : 'Sin registrar');
+      const g = new Map<string, { label: string; value: number; count: number }>();
+      for (const t of month) {
+        const parts = t.paymentType === 'CREDITO' ? [{ key: 'Crédito', amount: t.total }]
+          : t.payments ? t.payments.map((p) => ({ key: label(String(p.method).toUpperCase()), amount: Number(p.amount) || 0 }))
+          : [{ key: label(t.paymentMethod), amount: t.total }];
+        for (const p of parts) { const c = g.get(p.key) || { label: p.key, value: 0, count: 0 }; c.value += p.amount; c.count++; g.set(p.key, c); }
+      }
+      return [...g.values()].sort((a, b) => b.value - a.value).map((x) => ({ ...x, value: Math.round(x.value) }));
+    };
     const customers = new Map<string, { name: string; value: number; count: number }>();
     for (const t of month) {
       const k = t.customerId || t.customerName.toLowerCase(); if (!k) continue;
@@ -310,7 +324,7 @@ export class ModulePanelsService {
       },
       byChannel: group((t) => t.channel),
       byPaymentType: group((t) => (t.paymentType === 'CREDITO' ? 'Crédito' : 'Contado')),
-      byMethod: group((t) => (t.paymentType === 'CREDITO' ? 'Crédito' : METHODS[t.paymentMethod] || (t.paymentMethod ? t.paymentMethod : 'Sin registrar'))),
+      byMethod: byMethod(),
       topCustomers: [...customers.values()].sort((a, b) => b.value - a.value).slice(0, 5).map((c) => ({ ...c, value: Math.round(c.value) })),
       ordersByStage: byStage,
       days: days.map((d) => ({ ...d, revenue: Math.round(d.revenue) })),
