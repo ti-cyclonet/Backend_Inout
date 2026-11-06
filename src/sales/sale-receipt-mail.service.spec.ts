@@ -17,7 +17,7 @@ describe('SaleReceiptMailService', () => {
     (global as any).fetch = fetchMock;
     const repo = { findOne: jest.fn(async ({ where }) => (where.strId === 's1' && where.strTenantId === 't1' ? sale : null)) };
     const params = { getParams: jest.fn(async () => ({ NEGOCIO_NOMBRE: 'Arepas La Esquina', NEGOCIO_NIT: '901.234.567-8' })) };
-    const branding = { get: jest.fn(async () => ({ logoPdfUrl: 'https://res.cloudinary.com/x/logo.png' })) };
+    const branding = { get: jest.fn(async () => ({ logoPdfUrl: 'https://res.cloudinary.com/x/logo.png', receiptNote: 'El domicilio se acuerda\ncon el <domiciliario>' })) };
     service = new SaleReceiptMailService(repo as any, params as any, branding as any);
   });
 
@@ -32,6 +32,7 @@ describe('SaleReceiptMailService', () => {
     expect(body.variables.itemsRows).toContain('Arepa combinada');
     expect(body.variables.paymentText).toBe('Pago de contado · Nequi');
     expect(body.variables.logoBlock).toContain('logo.png');
+    expect(body.variables.receiptNote).toContain('El domicilio se acuerda<br>con el &lt;domiciliario&gt;');
     expect(body.attachments[0]).toMatchObject({ filename: 'Comprobante SC-F-00232.pdf', contentType: 'application/pdf' });
   });
 

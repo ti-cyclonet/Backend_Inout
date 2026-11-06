@@ -1,4 +1,5 @@
-import { Controller, Delete, Get, Param, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -12,6 +13,13 @@ import { LOGO_MAX_BYTES } from './logo-url';
  * usuarios del tenant, y la lectura por tenantId es pública porque el
  * MarketPlace (sin sesión) también lo muestra.
  */
+class ReceiptNoteDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  note?: string | null;
+}
+
 @Controller('tenant-branding')
 export class TenantBrandingController {
   constructor(private readonly brandingService: TenantBrandingService) {}
@@ -21,6 +29,14 @@ export class TenantBrandingController {
   @Roles('admin', 'operator', 'viewer')
   getMine(@GetTenantId() tenantId: string) {
     return this.brandingService.get(tenantId);
+  }
+
+  /** Nota al pie del comprobante de venta (solo el admin). */
+  @Patch('receipt-note')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  setReceiptNote(@GetTenantId() tenantId: string, @Body() dto: ReceiptNoteDto) {
+    return this.brandingService.setReceiptNote(tenantId, dto.note);
   }
 
   @Post('logo')
