@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SalesService } from './sales.service';
+import { SaleReceiptMailService } from './sale-receipt-mail.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 import { SalesController } from './sales.controller';
 import { Sale } from './entities/sale.entity';
@@ -18,7 +19,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 @Module({
   imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule, PromotionsModule],
   controllers: [SalesController],
-  providers: [SalesService, InvoicePdfService],
+  providers: [SalesService, InvoicePdfService, SaleReceiptMailService],
   exports: [SalesService],
 })
 export class SalesModule {}

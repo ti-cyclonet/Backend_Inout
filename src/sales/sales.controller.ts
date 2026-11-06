@@ -2,7 +2,8 @@ import { Controller, Get, Post, Body, Param, Query, Req, UseGuards, UseIntercept
 import { Request, Response } from 'express';
 import { SalesService } from './sales.service';
 import { InvoicePdfService } from './invoice-pdf.service';
-import { CreateSaleDto, VoidSaleDto } from './dto/create-sale.dto';
+import { SaleReceiptMailService } from './sale-receipt-mail.service';
+import { CreateSaleDto, SendReceiptEmailDto, VoidSaleDto } from './dto/create-sale.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
@@ -16,7 +17,16 @@ export class SalesController {
   constructor(
     private readonly salesService: SalesService,
     private readonly invoicePdfService: InvoicePdfService,
+    private readonly receiptMail: SaleReceiptMailService,
   ) {}
+
+  /** Envía al cliente el comprobante (tiquete en PDF, generado por la app) por correo. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post(':id/receipt-email')
+  @Roles('admin', 'operator')
+  sendReceiptEmail(@Param('id') id: string, @Body() dto: SendReceiptEmailDto, @GetTenantId() tenantId: string) {
+    return this.receiptMail.send(tenantId, id, dto.email, dto.pdfBase64);
+  }
 
   @UseGuards(JwtAuthGuard, RolesGuard, LimitEnforcementGuard)
   @Post()
