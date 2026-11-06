@@ -79,6 +79,12 @@ export class OrdersController {
     return this.ordersService.getQueue(tenantId);
   }
 
+  /** Pantalla de preparación (cocina): pedidos por preparar, en preparación y listos. */
+  @Get('kitchen')
+  getKitchen(@GetTenantId() tenantId: string) {
+    return this.ordersService.getKitchen(tenantId);
+  }
+
   /** Tiempos por etapa y capacidad de producción del negocio. */
   @Get('settings/timing')
   getTimingSettings(@GetTenantId() tenantId: string) {

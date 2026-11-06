@@ -24,6 +24,8 @@ interface TenantLimitsResponse {
   endDate: string | null;
   /** Cambio de plan pedido y aún sin activar (Authoriza). */
   pendingUpgrade?: boolean;
+  /** Sector del contrato (tipo de negocio); 'general' si Authoriza no lo informa. */
+  businessSector?: string;
   limits: {
     variableName: string;
     displayName: string;

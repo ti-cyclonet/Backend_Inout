@@ -34,6 +34,7 @@ import {
 } from './order-timing';
 import { FulfillmentResult, resolveDeliveryOptions, resolveFulfillment } from './delivery-options';
 import { choicesExtra, validateLineChoices } from '../products/product-choices';
+import { groupComboLines } from '../combos/combo-lines';
 import { computeSaleProfit, SaleProfit } from '../common/sale-profit';
 import { GiftCardsService, StoreCustomer } from './gift-cards/gift-cards.service';
 import { depositWithGiftCards, isGiftCardLine } from './gift-cards/gift-cards';
@@ -341,6 +342,57 @@ export class OrdersService {
           estimatedReadyAt: est?.estimatedReadyAt ?? null,
         };
       }),
+    };
+  }
+
+  /**
+   * Pantalla de preparación: lo que la cocina tiene por hacer, del más antiguo
+   * al más nuevo, con los tiempos de la cola. Sin bonos de regalo (no se
+   * preparan) ni datos de pago o de contacto del cliente.
+   */
+  async getKitchen(tenantId: string) {
+    const queue = await this.getQueue(tenantId);
+    const info = new Map(queue.orders.map((q) => [q.orderId, q]));
+    const orders = await this.orderRepository.find({
+      where: [
+        { tenantId, status: OrderStatus.CONFIRMED },
+        { tenantId, status: OrderStatus.IN_PRODUCTION },
+        { tenantId, status: OrderStatus.READY },
+      ],
+      order: { createdAt: 'ASC' },
+    });
+    return {
+      serverTime: new Date(),
+      stageDurations: queue.settings?.stageDurations || {},
+      orders: orders
+        .map((o) => {
+          const q = info.get(o.id);
+          return {
+            id: o.id,
+            orderCode: o.orderCode,
+            status: o.status,
+            customerName: o.customerName,
+            notes: o.notes || null,
+            fulfillment: o.fulfillment || null,
+            deliveryZone: o.deliveryZone || null,
+            createdAt: o.createdAt,
+            // Combos agrupados con lo que incluyen; productos para armar con lo escogido
+            items: groupComboLines((o.items || []).filter((i) => i.itemType !== 'gift_card')).map((l) => ({
+              productName: l.name,
+              quantity: Number(l.quantity) || 0,
+              ...(l.options?.length ? { options: l.options } : {}),
+              ...(l.components?.length ? { components: l.components } : {}),
+            })),
+            needsProduction: q?.needsProduction ?? true,
+            stageEnteredAt: q?.stageEnteredAt ?? null,
+            stageDueAt: q?.stageDueAt ?? null,
+            scheduledStart: o.scheduledStart,
+            scheduledEnd: o.scheduledEnd,
+            estimatedStartAt: q?.estimatedStartAt ?? null,
+            estimatedReadyAt: q?.estimatedReadyAt ?? null,
+          };
+        })
+        .filter((o) => o.items.length > 0),
     };
   }
 
