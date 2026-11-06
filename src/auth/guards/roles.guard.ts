@@ -60,6 +60,7 @@ export class RolesGuard implements CanActivate {
       'adminInout': 'admin',
       'operatorInout': 'operator',
       'viewerInout': 'viewer',
+      'kitchenInout': 'kitchen',
       'admin': 'admin',
       'operator': 'operator',
       'viewer': 'viewer',

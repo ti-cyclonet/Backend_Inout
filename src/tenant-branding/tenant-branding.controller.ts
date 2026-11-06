@@ -26,7 +26,7 @@ export class TenantBrandingController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'operator', 'viewer')
+  @Roles('admin', 'operator', 'viewer', 'kitchen')
   getMine(@GetTenantId() tenantId: string) {
     return this.brandingService.get(tenantId);
   }
