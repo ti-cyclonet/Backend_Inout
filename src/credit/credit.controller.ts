@@ -12,6 +12,7 @@ import {
   AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, MarketplaceCreditRequestDto, RegisterPaymentDto,
   SuspendCreditDto, UpdateCreditSettingsDto, ValidateCreditDto, VoidReceivableDto,
 } from './dto/credit.dto';
+import { FeatureGuard, RequireFeature } from '../usage-counters/guards/feature.guard';
 
 const actorOf = (req: Request): Actor => {
   const u = req.user as any;
@@ -62,6 +63,8 @@ export class CreditController {
   }
 
   @Post('marketplace/request')
+  @UseGuards(FeatureGuard)
+  @RequireFeature('fCredito')
   marketplaceRequest(@Req() req: Request, @Body() dto: MarketplaceCreditRequestDto) {
     const { tenantId, customerId } = this.clientOf(req);
     return this.creditService.marketplaceRequest(tenantId, actorOf(req), customerId, dto);
@@ -82,6 +85,8 @@ export class CreditController {
 
   @Post('accounts')
   @Roles('admin', 'operator')
+  @UseGuards(FeatureGuard)
+  @RequireFeature('fCredito')
   createRequest(@GetTenantId() tenantId: string, @Req() req: Request, @Body() dto: CreateCreditRequestDto) {
     return this.creditService.createRequest(tenantId, actorOf(req), dto);
   }

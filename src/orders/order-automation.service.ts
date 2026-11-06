@@ -9,6 +9,7 @@ import { MarketplaceConfigService } from '../marketplace-config/marketplace-conf
 import { balanceDue, toBogotaDate } from './payment-plans';
 import { bogotaToUtc } from './scheduling';
 import { isDepositExpired, isLayawayExpired, layawayReminderDue } from './order-automation.rules';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>
@@ -37,6 +38,7 @@ export class OrderAutomationService {
     @InjectRepository(OrderPayment) private readonly paymentRepository: Repository<OrderPayment>,
     private readonly ordersService: OrdersService,
     private readonly marketplaceConfigService: MarketplaceConfigService,
+    private readonly limits: LimitEnforcementService,
   ) {}
 
   // ─── Anticipos vencidos ───
@@ -200,6 +202,11 @@ export class OrderAutomationService {
   }
 
   private async sendMail(tenantId: string, to: string, templateCode: string, variables: Record<string, string>): Promise<boolean> {
+    // Correos del plan: sin cupo, no se envía
+    if (!(await this.limits.tryConsume(tenantId, 'nCorreos'))) {
+      this.logger.warn(`Sin cupo de correos del plan: no se envió ${templateCode} (${tenantId})`);
+      return false;
+    }
     try {
       const res = await fetch(`${this.authorizaUrl}/api/notifications/send`, {
         method: 'POST',
@@ -211,6 +218,7 @@ export class OrderAutomationService {
       return true;
     } catch (err) {
       this.logger.warn(`No se pudo enviar ${templateCode} a ${to}: ${(err as Error).message}`);
+      await this.limits.decrement(tenantId, 'nCorreos').catch(() => {});
       return false;
     }
   }

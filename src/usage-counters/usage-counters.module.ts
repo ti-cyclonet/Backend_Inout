@@ -11,6 +11,7 @@ import { LimitRollbackInterceptor } from './interceptors/limit-rollback.intercep
 import { TrialLockInterceptor } from './interceptors/trial-lock.interceptor';
 import { UsageStatusController } from './usage-status.controller';
 import { MonthlyResetCron } from './monthly-reset.cron';
+import { FeatureGuard } from './guards/feature.guard';
 
 @Module({
   imports: [
@@ -19,13 +20,13 @@ import { MonthlyResetCron } from './monthly-reset.cron';
   ],
   controllers: [UsageStatusController],
   providers: [
-    UsageCountersService, LimitEnforcementService, LimitEnforcementGuard, UsageWarningInterceptor, MonthlyResetCron,
+    UsageCountersService, LimitEnforcementService, LimitEnforcementGuard, FeatureGuard, UsageWarningInterceptor, MonthlyResetCron,
     // Global: devuelve el cupo reservado por LimitEnforcementGuard si la operación falla.
     { provide: APP_INTERCEPTOR, useClass: LimitRollbackInterceptor },
     // Global: prueba vencida sin cambio de plan → no se escribe nada. Va después
     // del anterior para que el cupo reservado se devuelva también en ese caso.
     { provide: APP_INTERCEPTOR, useClass: TrialLockInterceptor },
   ],
-  exports: [LimitEnforcementService, LimitEnforcementGuard, UsageWarningInterceptor],
+  exports: [LimitEnforcementService, LimitEnforcementGuard, FeatureGuard, UsageWarningInterceptor],
 })
 export class UsageCountersModule {}

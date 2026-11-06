@@ -6,6 +6,7 @@ import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { PromotionsService } from './promotions.service';
 import { PricingService } from './pricing.service';
 import { CreatePromotionDto, MarketplaceQuoteDto, QuoteDto, UpdatePromotionDto } from './dto/promotion.dto';
+import { FeatureGuard, RequireFeature } from '../usage-counters/guards/feature.guard';
 
 /**
  * Promociones. Crear/editar/eliminar: solo admin. Consultar y cotizar: todos
@@ -54,7 +55,8 @@ export class PromotionsController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+  @RequireFeature('fCombosPromos')
   @Roles('admin')
   create(@GetTenantId() tenantId: string, @Body() dto: CreatePromotionDto) {
     return this.promotionsService.create(tenantId, dto);

@@ -15,6 +15,8 @@ export const VARIABLE_RESOURCE_MAP: Record<string, string> = {
   nPedidos: 'orders',
   nSesionesCap: 'training-sessions',
   nProveedores: 'suppliers',
+  nBodegas: 'warehouses',
+  nCorreos: 'emails',
 };
 
 /** Resource identifier → variable name */
@@ -29,6 +31,8 @@ export const RESOURCE_VARIABLE_MAP: Record<string, string> = {
   'orders': 'nPedidos',
   'training-sessions': 'nSesionesCap',
   'suppliers': 'nProveedores',
+  'warehouses': 'nBodegas',
+  'emails': 'nCorreos',
 };
 
 /** Display names for each variable */
@@ -43,6 +47,19 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   nPedidos: 'Pedidos',
   nSesionesCap: 'Sesiones de Capacitación',
   nProveedores: 'Proveedores',
+  nBodegas: 'Bodegas',
+  nCorreos: 'Correos enviados',
+};
+
+/**
+ * Funciones del plan (limitType «feature»): encendidas con maxValue 1. Si el
+ * paquete no define la variable, la función está disponible (los paquetes
+ * anteriores no las traen).
+ */
+export const FEATURE_LABELS: Record<string, string> = {
+  fTiendaOnline: 'la tienda online',
+  fCredito: 'las ventas a crédito',
+  fCombosPromos: 'los combos, promociones y bonos de regalo',
 };
 
 /** All known variable names */

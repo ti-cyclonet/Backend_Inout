@@ -13,6 +13,7 @@ import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 @Controller('sales')
 export class SalesController {
@@ -21,6 +22,7 @@ export class SalesController {
     private readonly invoicePdfService: InvoicePdfService,
     private readonly receiptMail: SaleReceiptMailService,
     private readonly paymentProof: SalePaymentProofService,
+    private readonly limits: LimitEnforcementService,
   ) {}
 
   /** Volante del datáfono / comprobante del pago (foto y referencia), opcional. */
@@ -45,7 +47,9 @@ export class SalesController {
   @CheckLimit('nVentas')
   @UseInterceptors(UsageWarningInterceptor)
   @Roles('admin', 'operator')
-  create(@Body() createDto: CreateSaleDto, @GetTenantId() tenantId: string) {
+  async create(@Body() createDto: CreateSaleDto, @GetTenantId() tenantId: string) {
+    // Vender a crédito requiere la función del plan
+    if (createDto.paymentType === 'CREDITO') await this.limits.assertFeature(tenantId, 'fCredito');
     return this.salesService.create(createDto, tenantId);
   }
 
