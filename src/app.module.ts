@@ -61,6 +61,8 @@ import { OrderPayment } from './orders/entities/order-payment.entity';
 import { OrderSettings } from './orders/entities/order-settings.entity';
 import { TenantBranding } from './tenant-branding/entities/tenant-branding.entity';
 import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
+import { BusinessModulesModule } from './business-modules/business-modules.module';
+import { TenantModules } from './business-modules/entities/tenant-modules.entity';
 import { BarcodesModule } from './barcodes/barcodes.module';
 import { ItemBarcode } from './barcodes/entities/item-barcode.entity';
 import { FeedbackModule } from './feedback/feedback.module';
@@ -86,7 +88,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement, PlatformSetting, MarketFeatured, ItemBarcode],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement, PlatformSetting, MarketFeatured, ItemBarcode, TenantModules],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -95,6 +97,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
     }),
     AuthModule,
     TenantBrandingModule,
+    BusinessModulesModule,
     CombosModule,
     BarcodesModule,
     PromotionsModule,
