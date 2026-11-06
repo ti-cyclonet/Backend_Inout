@@ -91,7 +91,10 @@ export class SaleReceiptMailService {
 
     const day = sale.dtmCreationDate ? new Date(sale.dtmCreationDate) : new Date();
     const date = day.toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-    const paymentText = String(sale.paymentType || '').toUpperCase() === 'CREDITO' ? 'Pago a crédito' : `Pago de contado · ${METHODS[String(sale.paymentMethod || 'EFECTIVO')] || esc(sale.paymentMethod)}`;
+    const method = (m: unknown) => METHODS[String(m || 'EFECTIVO').toUpperCase()] || String(m);
+    const paymentText = String(sale.paymentType || '').toUpperCase() === 'CREDITO' ? 'Pago a crédito'
+      : Array.isArray(sale.payments) && sale.payments.length ? `Pago de contado · ${sale.payments.map((p) => `${method(p.method)} ${money(p.amount)}`).join(' + ')}`
+      : `Pago de contado · ${method(sale.paymentMethod)}`;
 
     return {
       businessName: esc(name),

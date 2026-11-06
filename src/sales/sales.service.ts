@@ -14,6 +14,7 @@ import { applyStockDelta, assertStockAvailable, movementTarget, ResolvedStockLin
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
 import { computeSaleProfit } from '../common/sale-profit';
+import { MIXED_METHOD, normalizeSplitPayments } from './split-payments';
 
 @Injectable()
 export class SalesService {
@@ -175,6 +176,9 @@ export class SalesService {
       // Ganancia de la venta (con el costo de lo vendido en este momento)
       const profit = computeSaleProfit(resolved, { total, tax });
 
+      // Contado en varios medios (efectivo + transferencia…)
+      const split = createDto.paymentType === 'CREDITO' ? null : normalizeSplitPayments(createDto.payments, total);
+
       const sale = this.saleRepository.create({
         strTenantId: tenantId,
         strInvoiceCode: invoiceCode,
@@ -190,7 +194,8 @@ export class SalesService {
         discount: discount || 0,
         total: total,
         paymentType: createDto.paymentType === 'CREDITO' ? 'CREDITO' : 'CONTADO',
-        paymentMethod: createDto.paymentType === 'CREDITO' ? null : (createDto.paymentMethod || 'EFECTIVO'),
+        paymentMethod: createDto.paymentType === 'CREDITO' ? null : split ? MIXED_METHOD : (createDto.paymentMethod || 'EFECTIVO'),
+        payments: split,
         profit: profit.profit,
       });
       const savedSale = await queryRunner.manager.save(sale);

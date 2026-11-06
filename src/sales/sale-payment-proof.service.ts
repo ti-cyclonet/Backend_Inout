@@ -27,7 +27,8 @@ export class SalePaymentProofService {
     }
     const sale = await this.sales.findOne({ where: { strId: saleId, strTenantId: tenantId } });
     if (!sale) throw new NotFoundException('Venta no encontrada.');
-    if (String(sale.paymentType || '').toUpperCase() === 'CREDITO' || String(sale.paymentMethod || 'EFECTIVO').toUpperCase() === 'EFECTIVO') {
+    const methods = Array.isArray(sale.payments) && sale.payments.length ? sale.payments.map((p) => String(p.method).toUpperCase()) : [String(sale.paymentMethod || 'EFECTIVO').toUpperCase()];
+    if (String(sale.paymentType || '').toUpperCase() === 'CREDITO' || methods.every((m) => m === 'EFECTIVO')) {
       throw new BadRequestException('El volante aplica a ventas de contado con tarjeta, transferencia u otro medio que no sea efectivo.');
     }
     if (file) {
