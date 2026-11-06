@@ -12,7 +12,7 @@ export class BusinessModulesController {
   constructor(private readonly service: BusinessModulesService) {}
 
   @Get()
-  @Roles('admin', 'operator', 'viewer')
+  @Roles('admin', 'operator', 'viewer', 'kitchen')
   get(@GetTenantId() tenantId: string) {
     return this.service.get(tenantId);
   }

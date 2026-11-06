@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto, OrderSlotsQueryDto, UpdateOrderStatusDto } from './dto/create-order.dto';
@@ -10,6 +10,7 @@ import { CheckLimit } from '../usage-counters/decorators/check-limit.decorator';
 import { LimitEnforcementGuard } from '../usage-counters/guards/limit-enforcement.guard';
 import { UsageWarningInterceptor } from '../usage-counters/interceptors/usage-warning.interceptor';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { KITCHEN_ROLE, kitchenMayMove } from '../auth/kitchen-scope';
 import { BusinessParamsService } from '../config/business-params.service';
 import { OrderPaymentsService } from './order-payments.service';
 import { OrderPaymentDto, ReviewOrderPaymentDto } from './dto/order-payment.dto';
@@ -81,6 +82,7 @@ export class OrdersController {
 
   /** Pantalla de preparación (cocina): pedidos por preparar, en preparación y listos. */
   @Get('kitchen')
+  @Roles('admin', 'operator', 'viewer', 'kitchen')
   getKitchen(@GetTenantId() tenantId: string) {
     return this.ordersService.getKitchen(tenantId);
   }
@@ -163,12 +165,20 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @Roles('admin', 'operator')
-  updateStatus(
+  @Roles('admin', 'operator', 'kitchen')
+  async updateStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateOrderStatusDto,
     @GetTenantId() tenantId: string,
+    @Req() req: any,
   ) {
+    // La cocina solo empieza, marca listo y entrega lo que se recoge en el local
+    if (req?.user?.role === KITCHEN_ROLE) {
+      const order = await this.ordersService.findOne(id, tenantId);
+      if (!kitchenMayMove(order.status, updateStatusDto.status, order.fulfillment)) {
+        throw new ForbiddenException('Desde la cocina solo se puede empezar, marcar listo o entregar en el local.');
+      }
+    }
     return this.ordersService.updateStatus(id, tenantId, updateStatusDto.status, updateStatusDto.reason, {
       paymentType: updateStatusDto.paymentType,
       paymentMethod: updateStatusDto.paymentMethod,
