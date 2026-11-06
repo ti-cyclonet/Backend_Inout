@@ -55,6 +55,17 @@ export class CreateSaleDto {
   paymentMethod?: string;
 }
 
+export class SendReceiptEmailDto {
+  @IsString()
+  @MaxLength(254)
+  email: string;
+
+  /** Tiquete en PDF (base64), hasta 2 MB. */
+  @IsString()
+  @MaxLength(2_800_000)
+  pdfBase64: string;
+}
+
 export class VoidSaleDto {
   @IsString()
   @IsNotEmpty()
