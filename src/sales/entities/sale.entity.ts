@@ -53,6 +53,10 @@ export class Sale {
   @Column({ type: 'varchar', length: 20, nullable: true })
   paymentMethod: string | null;
 
+  /** Pago de contado dividido en varios medios (paymentMethod = 'MIXTO'); null si fue uno solo. */
+  @Column({ type: 'jsonb', nullable: true })
+  payments: { method: string; amount: number }[] | null;
+
   /** Foto del volante del datáfono o del comprobante de la transferencia (opcional). */
   @Column({ type: 'varchar', length: 500, nullable: true })
   strPaymentProofUrl: string | null;

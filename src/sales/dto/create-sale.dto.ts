@@ -1,5 +1,15 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsIn, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsIn, IsNotEmpty, MaxLength, IsArray, ArrayMaxSize, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PAYMENT_METHODS } from '../../credit/entities/receivable-payment.entity';
+
+/** Una parte de un pago de contado dividido. */
+export class SalePaymentPartDto {
+  @IsIn(PAYMENT_METHODS as unknown as string[])
+  method: string;
+
+  @IsNumber()
+  amount: number;
+}
 
 export class CreateSaleDto {
   @IsString()
@@ -53,6 +63,14 @@ export class CreateSaleDto {
   @IsOptional()
   @IsIn(PAYMENT_METHODS as unknown as string[])
   paymentMethod?: string;
+
+  /** Pago de contado dividido en varios medios (ej. efectivo + transferencia). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @ValidateNested({ each: true })
+  @Type(() => SalePaymentPartDto)
+  payments?: SalePaymentPartDto[];
 }
 
 export class SendReceiptEmailDto {
