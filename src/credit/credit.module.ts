@@ -13,9 +13,10 @@ import { CreditSettings } from './entities/credit-settings.entity';
 import { CreditRemindersService } from './credit-reminders.service';
 import { CreditService } from './credit.service';
 import { CreditController } from './credit.controller';
+import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CreditAccount, Receivable, ReceivablePayment, CreditSettings, ReceivableVoucher]), TenantBrandingModule, CloudinaryModule, MarketplaceConfigModule],
+  imports: [UsageCountersModule, TypeOrmModule.forFeature([CreditAccount, Receivable, ReceivablePayment, CreditSettings, ReceivableVoucher]), TenantBrandingModule, CloudinaryModule, MarketplaceConfigModule],
   controllers: [CreditController, CreditPayController],
   providers: [CreditService, CreditRemindersService, CreditVouchersService],
   exports: [CreditService],

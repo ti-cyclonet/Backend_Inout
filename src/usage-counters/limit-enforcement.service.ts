@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { UsageCounter } from './entities/usage-counter.entity';
-import { ALL_VARIABLE_NAMES, VARIABLE_DISPLAY_NAMES } from './constants/resource-variable-map';
+import { ALL_VARIABLE_NAMES, FEATURE_LABELS, VARIABLE_DISPLAY_NAMES } from './constants/resource-variable-map';
 import { TRIAL_EXPIRED, isTrialLocked } from './trial-lock';
 
 export const TRIAL_EXPIRED_MESSAGE = 'El periodo de prueba de InOut terminó. Para seguir, el administrador de la cuenta debe elegir un plan en Mi plan.';
@@ -29,6 +29,8 @@ interface TenantLimitsResponse {
     displayName: string;
     maxValue: number;
     targetApplication: string;
+    /** 'quantity' (cantidad) o 'feature' (función encendida con 1). */
+    limitType?: string;
   }[];
 }
 
@@ -200,6 +202,68 @@ export class LimitEnforcementService {
    * Decrement the counter for a given tenant and variable.
    * If the counter would go below 0, it is set to 0.
    */
+  /**
+   * Límite contra un conteo real (ej. bodegas activas): sin contador que se
+   * desfase con los registros que ya existían.
+   */
+  async assertBelowLimit(tenantId: string, variableName: string, currentCount: number): Promise<void> {
+    let limits: TenantLimitsResponse;
+    try { limits = await this.fetchLimits(tenantId); } catch { return; }
+    const def = limits.limits.find((l) => l.variableName === variableName);
+    if (!def || currentCount < def.maxValue) return;
+    throw new ForbiddenException({
+      error: 'LIMIT_REACHED',
+      resource: VARIABLE_DISPLAY_NAMES[variableName] || variableName,
+      limit: def.maxValue,
+      currentCount,
+    });
+  }
+
+  /** Deja el contador en un valor (para Consumos, cuando se cuenta lo real). */
+  async setCount(tenantId: string, variableName: string, count: number): Promise<void> {
+    const counter = await this.usageCounterRepository.findOne({ where: { tenantId, variableName } });
+    if (counter) {
+      counter.currentCount = Math.max(0, count);
+      await this.usageCounterRepository.save(counter);
+    } else {
+      await this.usageCounterRepository.save(this.usageCounterRepository.create({ tenantId, variableName, currentCount: Math.max(0, count) }));
+    }
+  }
+
+  /**
+   * Consume una unidad para envíos automáticos (correos): true si se puede
+   * enviar. Con el límite alcanzado, false; si Authoriza no responde, no
+   * bloquea el envío.
+   */
+  async tryConsume(tenantId: string, variableName: string): Promise<boolean> {
+    try {
+      await this.validateAndIncrement(tenantId, variableName);
+      return true;
+    } catch (err: any) {
+      return err?.response?.error !== 'LIMIT_REACHED';
+    }
+  }
+
+  /** ¿El plan incluye la función? Si el paquete no la define o no se sabe, sí. */
+  async isFeatureEnabled(tenantId: string, variableName: string): Promise<boolean> {
+    try {
+      const def = (await this.fetchLimits(tenantId)).limits.find((l) => l.variableName === variableName);
+      return !def || Number(def.maxValue) >= 1;
+    } catch {
+      return true;
+    }
+  }
+
+  async assertFeature(tenantId: string, variableName: string): Promise<void> {
+    if (await this.isFeatureEnabled(tenantId, variableName)) return;
+    const label = FEATURE_LABELS[variableName] || variableName;
+    throw new ForbiddenException({
+      error: 'FEATURE_DISABLED',
+      feature: variableName,
+      message: `Tu plan no incluye ${label}. Para usarla, cambia de plan en Mi plan.`,
+    });
+  }
+
   async decrement(tenantId: string, variableName: string): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -336,6 +400,7 @@ export class LimitEnforcementService {
       nVentas: `SELECT COUNT(*) as count FROM manufacturing.sales WHERE "strTenantId" = $1`,
       nSesionesCap: `SELECT COUNT(*) as count FROM manufacturing.training_sessions WHERE "strTenantId" = $1`,
       nProveedores: `SELECT COUNT(*) as count FROM manufacturing.suppliers WHERE "strTenantId" = $1 AND "strStatus" = 'active'`,
+      nBodegas: `SELECT COUNT(*) as count FROM manufacturing.warehouses WHERE "tenantId" = $1 AND status = 'active'`,
     };
 
     for (const [variableName, query] of Object.entries(countQueries)) {

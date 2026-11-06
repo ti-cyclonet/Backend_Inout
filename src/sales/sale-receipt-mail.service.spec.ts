@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { SaleReceiptMailService, isEmail } from './sale-receipt-mail.service';
 
 describe('SaleReceiptMailService', () => {
@@ -11,6 +11,7 @@ describe('SaleReceiptMailService', () => {
   };
   let fetchMock: jest.Mock;
   let service: SaleReceiptMailService;
+  let limits: { validateAndIncrement: jest.Mock; decrement: jest.Mock };
 
   beforeEach(() => {
     fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ success: true }) }));
@@ -18,7 +19,8 @@ describe('SaleReceiptMailService', () => {
     const repo = { findOne: jest.fn(async ({ where }) => (where.strId === 's1' && where.strTenantId === 't1' ? sale : null)) };
     const params = { getParams: jest.fn(async () => ({ NEGOCIO_NOMBRE: 'Arepas La Esquina', NEGOCIO_NIT: '901.234.567-8' })) };
     const branding = { get: jest.fn(async () => ({ logoPdfUrl: 'https://res.cloudinary.com/x/logo.png', receiptNote: 'El domicilio se acuerda\ncon el <domiciliario>' })) };
-    service = new SaleReceiptMailService(repo as any, params as any, branding as any);
+    limits = { validateAndIncrement: jest.fn(async () => undefined), decrement: jest.fn(async () => undefined) };
+    service = new SaleReceiptMailService(repo as any, params as any, branding as any, limits as any);
   });
 
   it('envía la plantilla con el detalle escapado y el PDF adjunto', async () => {
@@ -43,9 +45,17 @@ describe('SaleReceiptMailService', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('si Authoriza no lo envía, avisa', async () => {
+  it('si Authoriza no lo envía, avisa y devuelve el cupo de correos', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
     await expect(service.send('t1', 's1', 'a@b.co', pdf)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(limits.validateAndIncrement).toHaveBeenCalledWith('t1', 'nCorreos');
+    expect(limits.decrement).toHaveBeenCalledWith('t1', 'nCorreos');
+  });
+
+  it('sin cupo de correos del plan no envía', async () => {
+    limits.validateAndIncrement.mockRejectedValueOnce(new ForbiddenException({ error: 'LIMIT_REACHED' }));
+    await expect(service.send('t1', 's1', 'a@b.co', pdf)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('isEmail', () => {

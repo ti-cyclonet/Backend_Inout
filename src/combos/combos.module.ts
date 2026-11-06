@@ -6,9 +6,10 @@ import { ComboAssembly } from './entities/combo-assembly.entity';
 import { CombosService } from './combos.service';
 import { CombosController } from './combos.controller';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Combo, ComboComponent, ComboAssembly]), CloudinaryModule],
+  imports: [UsageCountersModule, TypeOrmModule.forFeature([Combo, ComboComponent, ComboAssembly]), CloudinaryModule],
   controllers: [CombosController],
   providers: [CombosService],
   exports: [CombosService],

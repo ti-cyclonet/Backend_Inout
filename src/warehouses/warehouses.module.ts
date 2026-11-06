@@ -8,9 +8,10 @@ import { StockTransfer } from './entities/stock-transfer.entity';
 import { PhysicalCount } from './entities/physical-count.entity';
 import { Material } from '../materials/entities/material.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
+import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 
 @Module({
-  imports: [
+  imports: [UsageCountersModule, 
     TypeOrmModule.forFeature([
       Warehouse,
       WarehouseLocation,

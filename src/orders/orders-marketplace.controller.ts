@@ -53,6 +53,7 @@ export class OrdersMarketplaceController {
   async createFromMarketplace(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {
     // Sin sesión no pasa por TrialLockInterceptor: prueba vencida → tienda en pausa
     await this.limitEnforcementService.assertNotTrialLocked(createDto.tenantId, STORE_PAUSED_MESSAGE);
+    await this.limitEnforcementService.assertFeature(createDto.tenantId, 'fTiendaOnline');
     return this.ordersService.createFromMarketplace(createDto, this.requestMeta(req));
   }
 
@@ -75,7 +76,7 @@ export class OrdersMarketplaceController {
 
   @UseGuards(JwtAuthGuard)
   @Post('marketplace/authenticated')
-  createFromMarketplaceAuthenticated(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {
+  async createFromMarketplaceAuthenticated(@Body() createDto: CreateMarketplaceOrderDto, @Req() req: Request) {
     const user = req.user as any;
     if (user?.role !== 'clienteInout') {
       throw new ForbiddenException('Solo cuentas de cliente pueden comprar con sesión iniciada.');
@@ -83,6 +84,7 @@ export class OrdersMarketplaceController {
     if (!user?.tenantId) {
       throw new ForbiddenException('No se pudo determinar el negocio de esta cuenta.');
     }
+    await this.limitEnforcementService.assertFeature(user.tenantId, 'fTiendaOnline');
     // El tenant del pedido siempre se deriva del token, nunca del body: evita
     // que un cliente de un negocio compre "como sí mismo" en otro negocio.
     return this.ordersService.createFromMarketplaceAuthenticated(
