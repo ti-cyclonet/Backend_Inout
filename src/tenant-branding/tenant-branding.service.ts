@@ -12,8 +12,12 @@ export interface TenantBrandingView {
   logoPdfUrl: string | null;
   /** Formato automático, para mostrar en web/MarketPlace. */
   logoWebUrl: string | null;
+  /** Nota al pie del comprobante de venta. */
+  receiptNote: string | null;
   updatedAt: Date | null;
 }
+
+export const RECEIPT_NOTE_MAX = 300;
 
 @Injectable()
 export class TenantBrandingService {
@@ -34,12 +38,24 @@ export class TenantBrandingService {
       logoUrl: url,
       logoPdfUrl: logoVariant(url, 'pdf'),
       logoWebUrl: logoVariant(url, 'web'),
+      receiptNote: b?.receiptNote || null,
       updatedAt: b?.updatedAt || null,
     };
   }
 
   async get(tenantId: string): Promise<TenantBrandingView> {
     const b = await this.repo.findOne({ where: { tenantId } });
+    return this.view(tenantId, b);
+  }
+
+  /** Guarda la nota del comprobante (vacía = sin nota). */
+  async setReceiptNote(tenantId: string, raw: unknown): Promise<TenantBrandingView> {
+    const note = String(raw ?? '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (note.length > RECEIPT_NOTE_MAX) throw new BadRequestException(`La nota puede tener hasta ${RECEIPT_NOTE_MAX} caracteres.`);
+    let b = await this.repo.findOne({ where: { tenantId } });
+    if (!b) b = this.repo.create({ tenantId });
+    b.receiptNote = note || null;
+    b = await this.repo.save(b);
     return this.view(tenantId, b);
   }
 
