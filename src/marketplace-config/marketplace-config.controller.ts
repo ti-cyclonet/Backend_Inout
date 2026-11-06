@@ -13,6 +13,7 @@ import { storeInfoFrom, validateStoreInfo } from './store-info';
 import { MENU_EXTRA_IMAGE_MAX_BYTES, resolveMenuExtras } from './menu-extras';
 import { resolveGiftCardOptions, validateGiftCardOptions } from '../orders/gift-cards/gift-cards';
 import { HOME_THEMES, canEditHomeTheme, isHomeTheme } from './home/home-theme';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 @Controller('marketplace-config')
 export class MarketplaceConfigController {
@@ -20,6 +21,7 @@ export class MarketplaceConfigController {
     private readonly marketplaceConfigService: MarketplaceConfigService,
     private readonly statsService: MarketplaceStatsService,
     private readonly businessParamsService: BusinessParamsService,
+    private readonly limits: LimitEnforcementService,
   ) {}
 
   /** Público: tema de la vitrina CycloNet Market. */
@@ -137,7 +139,9 @@ export class MarketplaceConfigController {
     if (req.user.tenantId !== tenantId) {
       throw new ForbiddenException('No tienes permisos para modificar este marketplace');
     }
-    return this.marketplaceConfigService.updateGiftCards(tenantId, validateGiftCardOptions(body));
+    const options = validateGiftCardOptions(body);
+    if ((options as any)?.enabled) await this.limits.assertFeature(tenantId, 'fCombosPromos');
+    return this.marketplaceConfigService.updateGiftCards(tenantId, options);
   }
 
   /** Formas de entrega: domicilio (con su valor) y/o recoger (público: las usa el checkout). */

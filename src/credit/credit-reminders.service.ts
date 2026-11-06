@@ -4,6 +4,7 @@ import { CreditService, money, todayCo } from './credit.service';
 import { Receivable } from './entities/receivable.entity';
 import { BusinessParamsService } from '../config/business-params.service';
 import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 type ReminderKind = 'PROXIMO' | 'HOY' | 'VENCIDA';
 
@@ -34,6 +35,7 @@ export class CreditRemindersService {
     private readonly creditService: CreditService,
     private readonly businessParams: BusinessParamsService,
     private readonly branding: TenantBrandingService,
+    private readonly limits: LimitEnforcementService,
   ) {}
 
   /** Todos los días a las 8:00 a. m. (hora de Colombia). */
@@ -111,6 +113,11 @@ export class CreditRemindersService {
       payUrl: esc(payUrl),
       year: new Date().getFullYear().toString(),
     };
+    // Correos del plan: sin cupo, no se envía (queda para cuando lo haya)
+    if (!(await this.limits.tryConsume(tenantId, 'nCorreos'))) {
+      this.logger.warn(`Sin cupo de correos del plan: no se envió el recordatorio ${view.documentCode} (${tenantId})`);
+      return false;
+    }
     try {
       const res = await fetch(`${this.authorizaUrl}/api/notifications/send`, {
         method: 'POST',
@@ -124,6 +131,7 @@ export class CreditRemindersService {
       return true;
     } catch (err) {
       this.logger.warn(`No se pudo enviar recordatorio ${view.documentCode} a ${email}: ${(err as Error).message}`);
+      await this.limits.decrement(tenantId, 'nCorreos').catch(() => {});
       return false;
     }
   }

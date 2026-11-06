@@ -10,9 +10,10 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { MarketFeatured } from './featured/market-featured.entity';
 import { FeaturedService } from './featured/featured.service';
 import { FeaturedController } from './featured/featured.controller';
+import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([MarketplaceConfig, MarketplaceItemStat, PlatformSetting, MarketFeatured]), CloudinaryModule],
+  imports: [UsageCountersModule, TypeOrmModule.forFeature([MarketplaceConfig, MarketplaceItemStat, PlatformSetting, MarketFeatured]), CloudinaryModule],
   controllers: [MarketplaceConfigController, FeaturedController],
   providers: [MarketplaceConfigService, MarketplaceStatsService, FeaturedService],
   exports: [MarketplaceConfigService],

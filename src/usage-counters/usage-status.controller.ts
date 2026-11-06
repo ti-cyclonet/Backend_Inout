@@ -28,7 +28,7 @@ export class UsageStatusController {
 
     // 3. Build response combining limits and counters
     const variables = limitsResponse.limits
-      .filter((limit) => limit.targetApplication === 'Inout')
+      .filter((limit) => limit.targetApplication === 'Inout' && limit.limitType !== 'feature')
       .map((limit) => {
         const counter = counters.find(
           (c) => c.variableName === limit.variableName,
@@ -69,7 +69,11 @@ export class UsageStatusController {
    */
   @Get('store/:tenantId')
   async storeStatus(@Param('tenantId') tenantId: string) {
-    return { ordersPaused: await this.limitEnforcementService.isTrialLocked(tenantId) };
+    const [locked, store] = await Promise.all([
+      this.limitEnforcementService.isTrialLocked(tenantId),
+      this.limitEnforcementService.isFeatureEnabled(tenantId, 'fTiendaOnline'),
+    ]);
+    return { ordersPaused: locked || !store };
   }
 
   @UseGuards(JwtAuthGuard)

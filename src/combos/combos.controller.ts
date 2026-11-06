@@ -7,6 +7,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { GetTenantId } from '../common/decorators/get-tenant-id.decorator';
 import { COMBO_IMAGE_MAX_BYTES, CombosService } from './combos.service';
 import { AssembleKitDto, CreateComboDto, UpdateComboDto } from './dto/combo.dto';
+import { FeatureGuard, RequireFeature } from '../usage-counters/guards/feature.guard';
 
 const actorOf = (req: Request) => (req.user as any)?.email || (req.user as any)?.id || null;
 
@@ -55,7 +56,8 @@ export class CombosController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+  @RequireFeature('fCombosPromos')
   @Roles('admin')
   create(@GetTenantId() tenantId: string, @Body() dto: CreateComboDto) {
     return this.combosService.create(tenantId, dto);

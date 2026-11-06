@@ -5,6 +5,7 @@ import { Sale } from './entities/sale.entity';
 import { BusinessParamsService } from '../config/business-params.service';
 import { TenantBrandingService } from '../tenant-branding/tenant-branding.service';
 import { groupComboLines } from '../combos/combo-lines';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 export const RECEIPT_PDF_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -31,6 +32,7 @@ export class SaleReceiptMailService {
     @InjectRepository(Sale) private readonly sales: Repository<Sale>,
     private readonly businessParams: BusinessParamsService,
     private readonly branding: TenantBrandingService,
+    private readonly limits: LimitEnforcementService,
   ) {}
 
   async send(tenantId: string, saleId: string, email: unknown, pdfBase64: unknown): Promise<{ success: true; to: string }> {
@@ -44,6 +46,8 @@ export class SaleReceiptMailService {
     if (!sale) throw new NotFoundException('Venta no encontrada.');
 
     const variables = await this.variables(tenantId, sale);
+    // Cuenta para los correos del plan (403 LIMIT_REACHED si no hay cupo)
+    await this.limits.validateAndIncrement(tenantId, 'nCorreos');
     const code = sale.strInvoiceCode || 'venta';
     const res = await fetch(`${this.authorizaUrl}/api/notifications/send`, {
       method: 'POST',
@@ -55,6 +59,7 @@ export class SaleReceiptMailService {
     }).catch(() => null);
     const body: any = res ? await res.json().catch(() => ({})) : {};
     if (!res || !res.ok || body?.success === false) {
+      await this.limits.decrement(tenantId, 'nCorreos').catch(() => {});
       this.logger.warn(`No se pudo enviar el comprobante ${code} a ${to}: ${body?.message || res?.status || 'sin conexión'}`);
       throw new ServiceUnavailableException('No se pudo enviar el correo. Intenta de nuevo en un momento.');
     }

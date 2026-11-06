@@ -7,6 +7,7 @@ import { StockTransfer } from './entities/stock-transfer.entity';
 import { PhysicalCount, CountStatus } from './entities/physical-count.entity';
 import { Material } from '../materials/entities/material.entity';
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
+import { LimitEnforcementService } from '../usage-counters/limit-enforcement.service';
 
 @Injectable()
 export class WarehousesService implements OnModuleInit {
@@ -19,7 +20,12 @@ export class WarehousesService implements OnModuleInit {
     @InjectRepository(PhysicalCount) private countRepo: Repository<PhysicalCount>,
     @InjectRepository(Material) private materialRepo: Repository<Material>,
     @InjectRepository(InventoryMovement) private movementRepo: Repository<InventoryMovement>,
+    private readonly limits: LimitEnforcementService,
   ) {}
+
+  private activeWarehouses(tenantId: string): Promise<number> {
+    return this.warehouseRepo.count({ where: { tenantId, status: 'active' } });
+  }
 
   /**
    * Backfill: al iniciar, genera locationCode para ubicaciones existentes que
@@ -48,8 +54,12 @@ export class WarehousesService implements OnModuleInit {
 
   // ═══════ WAREHOUSES ═══════
   async createWarehouse(data: any, tenantId: string) {
+    // Límite del plan contra las bodegas activas reales
+    await this.limits.assertBelowLimit(tenantId, 'nBodegas', await this.activeWarehouses(tenantId));
     const warehouse = this.warehouseRepo.create({ ...data, tenantId });
-    return this.warehouseRepo.save(warehouse);
+    const saved = await this.warehouseRepo.save(warehouse);
+    await this.limits.setCount(tenantId, 'nBodegas', await this.activeWarehouses(tenantId)).catch(() => {});
+    return saved;
   }
 
   async findAllWarehouses(tenantId: string) {
@@ -64,7 +74,9 @@ export class WarehousesService implements OnModuleInit {
     const wh = await this.warehouseRepo.findOne({ where: { id, tenantId } });
     if (!wh) throw new NotFoundException('Almacén no encontrado');
     wh.status = 'inactive';
-    return this.warehouseRepo.save(wh);
+    const saved = await this.warehouseRepo.save(wh);
+    await this.limits.setCount(tenantId, 'nBodegas', await this.activeWarehouses(tenantId)).catch(() => {});
+    return saved;
   }
 
   // ═══════ LOCATIONS ═══════
