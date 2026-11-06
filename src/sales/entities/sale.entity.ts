@@ -53,6 +53,14 @@ export class Sale {
   @Column({ type: 'varchar', length: 20, nullable: true })
   paymentMethod: string | null;
 
+  /** Foto del volante del datáfono o del comprobante de la transferencia (opcional). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  strPaymentProofUrl: string | null;
+
+  /** N° de aprobación o referencia del pago (opcional). */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  strPaymentReference: string | null;
+
   /** Ganancia al facturar: ingreso sin impuestos ni domicilio − costo de lo vendido (common/sale-profit.ts). */
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   profit: number | null;
