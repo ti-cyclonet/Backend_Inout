@@ -267,6 +267,23 @@ export function assertBookableDate(start: Date, settings: DiningSettings, now: D
   }
 }
 
+/** Estados del anticipo de una reserva de la tienda. */
+export type DepositStatus = 'PENDIENTE' | 'POR_VERIFICAR' | 'PAGADO' | 'RECHAZADO';
+
+/**
+ * Estado con que nace una reserva de la tienda: si pide anticipo, queda por
+ * confirmar hasta verificarlo; si no, según la confirmación del negocio.
+ */
+export function onlineInitialStatus(settings: DiningSettings, depositRequired: boolean): ReservationStatus {
+  if (depositRequired) return 'PENDING';
+  return settings.confirmMode === 'auto' ? 'CONFIRMED' : 'PENDING';
+}
+
+/** El cliente puede cancelar su reserva mientras no haya empezado. */
+export function customerMayCancel(status: ReservationStatus, startAt: Date, now: Date): boolean {
+  return (status === 'PENDING' || status === 'CONFIRMED') && now.getTime() < startAt.getTime();
+}
+
 /** Siguiente código de reserva: RS-00001, RS-00002… */
 export function nextReservationCode(last: string | null | undefined): string {
   const n = Number(String(last || '').replace(/^RS-/, ''));

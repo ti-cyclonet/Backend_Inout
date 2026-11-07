@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DiningModule } from '../dining/dining.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
@@ -29,6 +30,7 @@ import { GiftCardsController, GiftCardsMarketplaceController } from './gift-card
     MarketplaceConfigModule,
     CloudinaryModule,
     PromotionsModule,
+    DiningModule,
     TenantBrandingModule,
   ],
   controllers: [OrdersMarketplaceController, OrdersController, GiftCardsMarketplaceController, GiftCardsController],

@@ -155,10 +155,15 @@ export class CreateMarketplaceOrderDto {
   @IsString({ each: true })
   giftCardIds?: string[];
 
-  /** A domicilio (exige dirección y suma el valor del domicilio) o recoger en el local. */
+  /** A domicilio (exige dirección y suma el valor del domicilio), recoger en el local o comer en el local (con reserva). */
   @IsOptional()
-  @IsIn(['DELIVERY', 'PICKUP'])
-  fulfillment?: 'DELIVERY' | 'PICKUP';
+  @IsIn(['DELIVERY', 'PICKUP', 'DINE_IN'])
+  fulfillment?: 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+
+  /** Comer en el local: la reserva de mesa ('YYYY-MM-DD', 'HH:MM' en Colombia, personas). */
+  @IsOptional()
+  @IsObject()
+  reservation?: { date: string; time: string; partySize: number };
 
   /** Zona de entrega elegida (si la tienda cobra el domicilio por zona); '__other__' = otra zona. */
   @IsOptional()

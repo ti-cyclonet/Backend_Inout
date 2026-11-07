@@ -14,6 +14,7 @@ import { logoVariant } from '../tenant-branding/logo-url';
 import { resolveThanksMessages } from './thanks-messages';
 import { resolveDeliveryOptions } from './delivery-options';
 import { GiftCardsService } from './gift-cards/gift-cards.service';
+import { DiningService } from '../dining/dining.service';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
@@ -51,6 +52,7 @@ export class OrderPaymentsService {
     private readonly ordersService: OrdersService,
     private readonly brandingService: TenantBrandingService,
     private readonly giftCardsService: GiftCardsService,
+    private readonly dining: DiningService,
   ) {}
 
   /**
@@ -229,6 +231,8 @@ export class OrderPaymentsService {
       needsProduction: orderNeedsProduction(order as any),
       pickupAddress: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupAddress || null : null,
       pickupNotes: order.fulfillment === 'PICKUP' ? resolveDeliveryOptions(config?.deliveryOptions).pickupNotes || null : null,
+      /** Comer en el local: la reserva de mesa del pedido. */
+      reservation: order.fulfillment === 'DINE_IN' ? await this.dining.publicForOrder(order.tenantId, order.id).catch(() => null) : null,
       paymentPlan: order.paymentPlan,
       paymentStatus: order.paymentStatus,
       depositRequired: Number(order.depositRequired),
