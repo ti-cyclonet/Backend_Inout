@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, EntityManager, In, Repository } from 'typeorm';
 import { DiningTable } from './entities/dining-table.entity';
@@ -6,11 +7,34 @@ import { TableReservation } from './entities/table-reservation.entity';
 import { DiningSettingsEntity } from './entities/dining-settings.entity';
 import { MarketplaceConfig } from '../marketplace-config/entities/marketplace-config.entity';
 import { BusinessModulesService } from '../business-modules/business-modules.service';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { LimitEnforcementService, STORE_PAUSED_MESSAGE } from '../usage-counters/limit-enforcement.service';
+import { resolveMenuExtras } from '../marketplace-config/menu-extras';
+import { resolvePaymentOptions } from '../orders/payment-plans';
 import { bogotaDate, bogotaToUtc, resolveScheduling } from '../orders/scheduling';
 import {
-  BLOCKING, DiningSettings, ReservationLike, ReservationStatus, assertTransition, diningSlots, findConflict,
-  nextReservationCode, resolveDiningSettings, validateDiningSettings, validateTable,
+  BLOCKING, DiningSettings, ReservationLike, ReservationStatus, STATUS_LABELS, assertBookableDate, assertTransition,
+  customerMayCancel, depositFor, diningSlots, findConflict, nextReservationCode, onlineInitialStatus,
+  resolveDiningSettings, validateDiningSettings, validateTable,
 } from './dining-rules';
+
+const PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Reserva de la tienda online (el cliente, sin sesión). */
+export interface OnlineReservationInput {
+  date?: string;
+  time?: string;
+  partySize?: number;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string | null;
+  notes?: string | null;
+  acceptTerms?: boolean;
+  acceptHabeasData?: boolean;
+  termsVersion?: string;
+  habeasDataVersion?: string;
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -45,6 +69,8 @@ export class DiningService {
     @InjectRepository(MarketplaceConfig) private readonly marketplaceRepo: Repository<MarketplaceConfig>,
     private readonly modules: BusinessModulesService,
     private readonly dataSource: DataSource,
+    private readonly cloudinary: CloudinaryService,
+    private readonly limits: LimitEnforcementService,
   ) {}
 
   /** Mesas y reservas debe estar activo en Funciones de mi negocio. */
@@ -274,6 +300,258 @@ export class DiningService {
       r.cancelReason = text(reason, 300);
     }
     return this.reservations.save(r);
+  }
+
+  // ─── Tienda online ───
+
+  /**
+   * Lo que la tienda muestra para reservar. `enabled` = el negocio tiene Mesas
+   * activo, abrió las reservas en la tienda, no es cocina oculta y tiene mesas.
+   */
+  async publicInfo(tenantId: string) {
+    const [settings, tables, cfg, on] = await Promise.all([
+      this.getSettings(tenantId),
+      this.listTables(tenantId),
+      this.marketplaceRepo.findOne({ where: { tenantId }, select: ['id', 'menuExtras', 'paymentOptions'] }),
+      this.modules.isEnabled(tenantId, 'tables').catch(() => false),
+    ]);
+    const deliveryOnly = resolveMenuExtras(cfg?.menuExtras).deliveryOnly;
+    const enabled = on && settings.onlineEnabled && !deliveryOnly && tables.length > 0;
+    return {
+      enabled,
+      preorderMode: settings.preorderMode,
+      depositMode: settings.depositMode,
+      depositAmount: settings.depositAmount,
+      depositPerPerson: settings.depositPerPerson,
+      durationMinutes: settings.durationMinutes,
+      toleranceMinutes: settings.toleranceMinutes,
+      minLeadHours: settings.minLeadHours,
+      maxDaysAhead: settings.maxDaysAhead,
+      confirmMode: settings.confirmMode,
+      /** En línea no se unen mesas: el grupo más grande es la mesa más grande. */
+      maxPartySize: tables.reduce((m, t) => Math.max(m, t.seats), 0),
+      paymentInstructions: resolvePaymentOptions(cfg?.paymentOptions as any).instructions || null,
+    };
+  }
+
+  private async assertOnline(tenantId: string) {
+    await this.limits.assertNotTrialLocked(tenantId, STORE_PAUSED_MESSAGE);
+    const info = await this.publicInfo(tenantId);
+    if (!info.enabled) throw new BadRequestException('Esta tienda no está recibiendo reservas en línea.');
+    return info;
+  }
+
+  /** Horas para reservar en la tienda (sin datos de las mesas). */
+  async publicAvailability(tenantId: string, date: string, partySize: number, now = new Date()) {
+    const info = await this.publicInfo(tenantId);
+    if (!info.enabled) return { date, slots: [] };
+    const party = Math.max(1, Math.round(Number(partySize) || 1));
+    if (party > info.maxPartySize) return { date, slots: [], tooLarge: true };
+    const { slots } = await this.availability(tenantId, date, party, now);
+    const last = new Date(now.getTime() + info.maxDaysAhead * 86_400_000);
+    return {
+      date,
+      slots: slots.map((s) => ({ start: s.start, end: s.end, available: s.available && s.start.getTime() <= last.getTime() })),
+    };
+  }
+
+  /** Para el checkout: la tienda recibe reservas con pedido. */
+  async assertPreorderAllowed(tenantId: string) {
+    const info = await this.assertOnline(tenantId);
+    if (info.preorderMode === 'none') throw new BadRequestException('Esta tienda reserva solo la mesa, sin pedido anticipado.');
+    return info;
+  }
+
+  /**
+   * Reserva desde la tienda: la hora debe estar disponible para ese número de
+   * personas (se recalcula bajo el bloqueo) y se asigna la mesa más pequeña
+   * donde caben. Con `link` va ligada a un pedido anticipado (dentro de la
+   * misma transacción del pedido) y el pago lo maneja el pedido.
+   */
+  async bookOnline(
+    tenantId: string,
+    input: OnlineReservationInput,
+    meta: { ipAddress?: string; userAgent?: string } = {},
+    link: { orderId: string; manager: EntityManager; consents: Record<string, any> | null } | null = null,
+    now = new Date(),
+  ) {
+    const info = await this.assertOnline(tenantId);
+    if (!link && info.preorderMode === 'required') {
+      throw new BadRequestException('En esta tienda la reserva va con el pedido: agrega tus productos al carrito y elige Comer en el local.');
+    }
+    const settings = await this.getSettings(tenantId);
+    const partySize = Math.round(Number(input.partySize));
+    if (!Number.isInteger(partySize) || partySize < 1) throw new BadRequestException('Indica cuántas personas son.');
+    if (partySize > info.maxPartySize) throw new BadRequestException(`En línea se reserva para máximo ${info.maxPartySize} personas. Para grupos más grandes, escríbele a la tienda.`);
+    if (!DATE_RE.test(input.date || '') || !TIME_RE.test(input.time || '')) throw new BadRequestException('Elige la fecha y la hora de la reserva.');
+    const customerName = text(input.customerName, 120);
+    const customerPhone = text(input.customerPhone, 30);
+    if (!customerName || !customerPhone) throw new BadRequestException('Escribe tu nombre y tu celular para la reserva.');
+    const [h, m] = input.time!.split(':').map(Number);
+    const start = bogotaToUtc(input.date!, h * 60 + m);
+    assertBookableDate(start, settings, now);
+
+    let consents = link?.consents || null;
+    if (!link) {
+      const accepted = input.acceptTerms === true && input.acceptHabeasData === true && !!input.termsVersion && !!input.habeasDataVersion;
+      if (!accepted) throw new BadRequestException('Debes aceptar los Términos y Condiciones y autorizar el tratamiento de tus datos personales para reservar.');
+      consents = {
+        termsVersion: input.termsVersion, habeasDataVersion: input.habeasDataVersion, acceptedAt: now.toISOString(),
+        ipAddress: meta.ipAddress?.slice(0, 64) || null, userAgent: meta.userAgent?.slice(0, 500) || null,
+      };
+    }
+    const deposit = link ? 0 : depositFor(settings, partySize);
+    const hours = await this.hours(tenantId);
+
+    const run = async (manager: EntityManager) => {
+      await this.lock(manager, tenantId);
+      const tables = await manager.getRepository(DiningTable).find({ where: { tenantId, active: true } });
+      const around = await manager.getRepository(TableReservation)
+        .createQueryBuilder('r')
+        .where('r.tenantId = :tenantId', { tenantId })
+        .andWhere('r.status IN (:...st)', { st: BLOCKING })
+        .getMany();
+      const slot = diningSlots(input.date!, partySize, settings, hours, tables, around as unknown as ReservationLike[], now)
+        .find((s) => s.start.getTime() === start.getTime());
+      if (!slot?.available || !slot.tableId) throw new BadRequestException('Esa hora ya no está disponible. Elige otra.');
+      const repo = manager.getRepository(TableReservation);
+      const last = await repo.findOne({ where: { tenantId }, order: { code: 'DESC' }, select: ['id', 'code'] });
+      return repo.save(repo.create({
+        tenantId,
+        code: nextReservationCode(last?.code),
+        tableIds: [slot.tableId],
+        partySize,
+        startAt: slot.start,
+        endAt: slot.end,
+        status: onlineInitialStatus(settings, deposit > 0),
+        source: 'MARKETPLACE',
+        customerName,
+        customerPhone,
+        customerEmail: text(input.customerEmail, 120)?.toLowerCase() || null,
+        notes: text(input.notes, 500),
+        orderId: link?.orderId || null,
+        depositAmount: deposit > 0 ? deposit : null,
+        depositStatus: deposit > 0 ? 'PENDIENTE' : null,
+        trackingToken: randomBytes(24).toString('hex'),
+        consents,
+      }));
+    };
+    const saved = link ? await run(link.manager) : await this.dataSource.transaction(run);
+    return this.publicView(saved, info.paymentInstructions, link?.manager);
+  }
+
+  /** Lo que ve el cliente de su reserva (sin datos de otras reservas). */
+  private async publicView(r: TableReservation, paymentInstructions?: string | null, manager?: EntityManager) {
+    const em = manager || this.dataSource.manager;
+    const tables = await em.getRepository(DiningTable).find({ where: { tenantId: r.tenantId, id: In(r.tableIds) } });
+    const order = r.orderId
+      ? await em.query(`SELECT "orderCode", "trackingToken" FROM manufacturing.orders WHERE id = $1`, [r.orderId]).then((x: any[]) => x[0] || null)
+      : null;
+    return {
+      code: r.code,
+      token: r.trackingToken,
+      tenantId: r.tenantId,
+      status: r.status,
+      statusLabel: STATUS_LABELS[r.status as ReservationStatus] || r.status,
+      startAt: r.startAt,
+      endAt: r.endAt,
+      partySize: r.partySize,
+      customerName: r.customerName,
+      notes: r.notes,
+      tables: tables.map((t) => ({ name: t.name, zone: t.zone })),
+      deposit: r.depositAmount ? {
+        amount: Number(r.depositAmount),
+        status: r.depositStatus,
+        proofUrl: r.depositProofUrl,
+        reference: r.depositReference,
+        instructions: paymentInstructions ?? null,
+      } : null,
+      order: order ? { code: order.orderCode, token: order.trackingToken } : null,
+      canCancel: customerMayCancel(r.status as ReservationStatus, r.startAt, new Date()),
+    };
+  }
+
+  private async byToken(token: string) {
+    const t = String(token || '');
+    if (!/^[a-f0-9]{48}$/.test(t)) throw new NotFoundException('Reserva no encontrada.');
+    const r = await this.reservations.findOne({ where: { trackingToken: t } });
+    if (!r) throw new NotFoundException('Reserva no encontrada.');
+    return r;
+  }
+
+  async viewByToken(token: string) {
+    const r = await this.byToken(token);
+    const info = r.depositAmount ? await this.publicInfo(r.tenantId) : null;
+    return this.publicView(r, info?.paymentInstructions);
+  }
+
+  async cancelByToken(token: string, now = new Date()) {
+    const r = await this.byToken(token);
+    if (!customerMayCancel(r.status as ReservationStatus, r.startAt, now)) throw new BadRequestException('Esta reserva ya no se puede cancelar.');
+    // Con pedido anticipado, la cancelación del pedido la hace el negocio (puede haber pagos)
+    if (r.orderId) throw new BadRequestException('Tu reserva tiene un pedido: para cancelarla escríbele a la tienda.');
+    r.status = 'CANCELLED';
+    r.cancelledAt = now;
+    r.cancelReason = 'Cancelada por el cliente desde la tienda';
+    await this.reservations.save(r);
+    return this.viewByToken(token);
+  }
+
+  /** El cliente sube el comprobante del anticipo (queda por verificar). */
+  async depositProofByToken(token: string, file: Express.Multer.File | undefined, reference: unknown) {
+    const r = await this.byToken(token);
+    if (!r.depositAmount) throw new BadRequestException('Esta reserva no pide anticipo.');
+    if (r.depositStatus === 'PAGADO') throw new BadRequestException('El anticipo ya está verificado.');
+    if (!BLOCKING.includes(r.status as ReservationStatus)) throw new BadRequestException('Esta reserva ya no está activa.');
+    if (!file || !PROOF_TYPES.includes(file.mimetype) || file.size > PROOF_MAX_BYTES) {
+      throw new BadRequestException('Adjunta la foto del comprobante: JPG, PNG o WEBP de máximo 5 MB.');
+    }
+    const uploaded = await this.cloudinary.uploadImageFromBuffer(file.buffer, 'inout/reservation-deposits', r.tenantId);
+    r.depositProofUrl = uploaded.secure_url;
+    r.depositReference = text(reference, 100);
+    r.depositStatus = 'POR_VERIFICAR';
+    await this.reservations.save(r);
+    return this.viewByToken(token);
+  }
+
+  /** El negocio verifica el anticipo: aprobado confirma la reserva; rechazado, el cliente vuelve a subirlo. */
+  async reviewDeposit(tenantId: string, id: string, approve: boolean) {
+    const r = await this.reservations.findOne({ where: { id, tenantId } });
+    if (!r) throw new NotFoundException('Reserva no encontrada.');
+    if (!r.depositAmount) throw new BadRequestException('Esta reserva no pide anticipo.');
+    r.depositStatus = approve ? 'PAGADO' : 'RECHAZADO';
+    if (approve && r.status === 'PENDING') r.status = 'CONFIRMED';
+    return this.reservations.save(r);
+  }
+
+  /** Reserva de un pedido para comer en el local (seguimiento público del pedido). */
+  async publicForOrder(tenantId: string, orderId: string) {
+    const r = await this.reservations.findOne({ where: { tenantId, orderId } });
+    if (!r) return null;
+    const tables = await this.tables.find({ where: { tenantId, id: In(r.tableIds) } });
+    return {
+      code: r.code,
+      token: r.trackingToken,
+      status: r.status,
+      statusLabel: STATUS_LABELS[r.status as ReservationStatus] || r.status,
+      startAt: r.startAt,
+      partySize: r.partySize,
+      tables: tables.map((t) => t.name),
+    };
+  }
+
+  /** Mesa de los pedidos para comer en el local (pantalla de cocina y pedidos). */
+  async tableLabelsForOrders(tenantId: string, orderIds: string[]): Promise<Map<string, { table: string; code: string; startAt: Date }>> {
+    const out = new Map<string, { table: string; code: string; startAt: Date }>();
+    if (!orderIds.length) return out;
+    const res = await this.reservations.find({ where: { tenantId, orderId: In(orderIds) } });
+    if (!res.length) return out;
+    const tables = await this.tables.find({ where: { tenantId, id: In([...new Set(res.flatMap((r) => r.tableIds))]) } });
+    const name = new Map(tables.map((t) => [t.id, t.name]));
+    for (const r of res) {
+      if (r.orderId) out.set(r.orderId, { table: r.tableIds.map((id) => name.get(id) || 'Mesa').join(' + '), code: r.code, startAt: r.startAt });
+    }
+    return out;
   }
 
   // ─── Apoyo ───

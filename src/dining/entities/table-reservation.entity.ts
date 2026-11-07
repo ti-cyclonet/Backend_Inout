@@ -61,8 +61,25 @@ export class TableReservation {
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   depositAmount: number | null;
 
+  /** PENDIENTE | POR_VERIFICAR | PAGADO | RECHAZADO */
   @Column({ type: 'varchar', length: 15, nullable: true })
   depositStatus: string | null;
+
+  /** Comprobante del anticipo que sube el cliente y su referencia. */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  depositProofUrl: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  depositReference: string | null;
+
+  /** Enlace público de la reserva (lo recibe el cliente). */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  trackingToken: string | null;
+
+  /** Aceptación de términos y tratamiento de datos (reservas de la tienda). */
+  @Column({ type: 'jsonb', nullable: true })
+  consents: Record<string, any> | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   seatedAt: Date | null;

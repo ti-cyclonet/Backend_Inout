@@ -12,6 +12,7 @@ import { itemsNeedProduction, orderNeedsProduction, previewOrderStock, reservedL
 import { expandComboLines } from '../combos/combo-lines';
 import { PricingService } from '../promotions/pricing.service';
 import { assertOpenForAsap, assertSlotAvailable, bogotaDate, bogotaToUtc, buildSlots, resolveScheduling } from './scheduling';
+import { DiningService } from '../dining/dining.service';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import { BusinessParamsService, taxOn } from '../config/business-params.service';
 import {
@@ -64,6 +65,7 @@ export class OrdersService {
     private pricingService: PricingService,
     private giftCardsService: GiftCardsService,
     private businessParamsService: BusinessParamsService,
+    private dining: DiningService,
   ) {}
 
   /**
@@ -361,6 +363,8 @@ export class OrdersService {
       ],
       order: { createdAt: 'ASC' },
     });
+    const dineIds = orders.filter((o) => o.fulfillment === 'DINE_IN').map((o) => o.id);
+    const tablesOf = dineIds.length ? await this.dining.tableLabelsForOrders(tenantId, dineIds).catch(() => new Map()) : new Map();
     return {
       serverTime: new Date(),
       stageDurations: queue.settings?.stageDurations || {},
@@ -368,6 +372,7 @@ export class OrdersService {
         .map((o) => {
           const q = info.get(o.id);
           return {
+            table: tablesOf.get(o.id)?.table || null,
             id: o.id,
             orderCode: o.orderCode,
             status: o.status,
@@ -633,7 +638,19 @@ export class OrdersService {
     // Horario de atención: sin franja programada, la tienda debe estar abierta
     // (comprar solo bonos de regalo no depende del horario)
     const onlyGiftCards = (createDto.items || []).length > 0 && (createDto.items || []).every(isGiftCardLine);
-    if (!createDto.scheduledStart && !onlyGiftCards) {
+    // Comer en el local: la hora la da la reserva de mesa, no las franjas de pedidos programados
+    const dineIn = delivery.fulfillment === 'DINE_IN';
+    let dineStart: Date | null = null;
+    if (dineIn) {
+      await this.dining.assertPreorderAllowed(tenantId);
+      const r = createDto.reservation;
+      if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.date)) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time))) {
+        throw new BadRequestException('Elige la fecha y la hora de tu reserva para comer en el local.');
+      }
+      const [h, m] = String(r.time).split(':').map(Number);
+      dineStart = bogotaToUtc(String(r.date), h * 60 + m);
+    }
+    if (!createDto.scheduledStart && !onlyGiftCards && !dineIn) {
       assertOpenForAsap(resolveScheduling(marketplaceConfig?.scheduling), new Date());
     }
 
@@ -673,7 +690,10 @@ export class OrdersService {
 
       // Hora estimada de listo (cola + fabricación) y, si se programó, validar la franja
       const earliestReadyAt = await this.estimateReadyForNewOrder(tenantId, stock.leadHours, timing, stock.hasMadeToOrder || itemsNeedProduction(stock.items), stock.batchMinutes);
-      const slot = createDto.scheduledStart
+      if (dineStart && earliestReadyAt && new Date(earliestReadyAt).getTime() > dineStart.getTime()) {
+        throw new BadRequestException('No alcanzamos a tener tu pedido listo para esa hora. Elige una hora más tarde.');
+      }
+      const slot = createDto.scheduledStart && !dineIn
         ? assertSlotAvailable(createDto.scheduledStart, resolveScheduling(marketplaceConfig?.scheduling), {
             now: new Date(),
             earliestReadyAt,
@@ -708,8 +728,8 @@ export class OrdersService {
         productionBatchMinutes: stock.batchMinutes.length ? stock.batchMinutes : null,
         // Incluye la espera por los pedidos que ya están en la cola
         estimatedReadyAt: earliestReadyAt,
-        scheduledStart: slot?.start || null,
-        scheduledEnd: slot?.end || null,
+        scheduledStart: dineStart || slot?.start || null,
+        scheduledEnd: dineStart || slot?.end || null,
         trackingToken: randomBytes(24).toString('hex'),
         deliveryLatitude: hasLocation ? createDto.deliveryLatitude : null,
         deliveryLongitude: hasLocation ? createDto.deliveryLongitude : null,
@@ -726,6 +746,16 @@ export class OrdersService {
       // Bonos que compra (PENDIENTES hasta el pago) y bonos con los que paga
       await this.giftCardsService.createForOrder(manager, saved, { userId: customer.customerId, name: (customer.customerName || '').split(' | ')[0] });
       if (allocation.length) await this.giftCardsService.redeem(manager, saved, redeem!.customer, redeemCards, allocation);
+      // Comer en el local: la reserva de mesa ligada al pedido (si la hora ya no está, no se crea nada)
+      if (dineIn) {
+        (saved as any).reservation = await this.dining.bookOnline(tenantId, {
+          ...createDto.reservation,
+          customerName: createDto.customerName,
+          customerPhone: createDto.customerPhone,
+          customerEmail: createDto.customerEmail || null,
+          notes: createDto.notes || null,
+        }, {}, { orderId: saved.id, manager, consents });
+      }
       return saved;
     });
   }

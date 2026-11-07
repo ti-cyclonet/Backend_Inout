@@ -46,6 +46,8 @@ describe('delivery-options', () => {
 
     it('recoger: sin cargo ni dirección', () => {
       expect(resolveFulfillment('PICKUP', 'algo', tienda)).toEqual({ fulfillment: 'PICKUP', deliveryFee: 0, address: null, zone: null });
+      // Comer en el local: sin dirección ni domicilio (la valida la reserva de mesa)
+      expect(resolveFulfillment('DINE_IN', 'algo', tienda)).toEqual({ fulfillment: 'DINE_IN', deliveryFee: 0, address: null, zone: null });
     });
 
     it('no permite una modalidad que la tienda no ofrece', () => {
