@@ -15,8 +15,9 @@ import { BadRequestException } from '@nestjs/common';
  * (lejos)"). Sin zonas, el domicilio vale lo mismo en todas partes.
  */
 
-export type Fulfillment = 'DELIVERY' | 'PICKUP';
-export const FULFILLMENTS: Fulfillment[] = ['DELIVERY', 'PICKUP'];
+/** DINE_IN: comer en el local, con reserva de mesa (ver dining/). */
+export type Fulfillment = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+export const FULFILLMENTS: Fulfillment[] = ['DELIVERY', 'PICKUP', 'DINE_IN'];
 
 /** Sitio de entrega con su valor ("Turbaco", 5000). */
 export interface DeliveryZone {
@@ -164,6 +165,8 @@ export function resolveFulfillment(
   const addr = (address || '').trim();
   if (!requested) return { fulfillment: null, deliveryFee: 0, address: addr || null, zone: null };
 
+  // Comer en el local: lo valida la reserva de mesa (OrdersService)
+  if (requested === 'DINE_IN') return { fulfillment: 'DINE_IN', deliveryFee: 0, address: null, zone: null };
   if (requested === 'PICKUP') {
     if (!options.pickupEnabled) throw new BadRequestException('Esta tienda no tiene recogida en el local. Elige entrega a domicilio.');
     return { fulfillment: 'PICKUP', deliveryFee: 0, address: null, zone: null };

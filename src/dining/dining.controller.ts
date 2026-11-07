@@ -92,6 +92,14 @@ export class DiningController {
     return this.dining.updateReservation(tenantId, id, body || {});
   }
 
+  /** Anticipo de una reserva de la tienda: verificarlo (confirma la reserva) o rechazarlo. */
+  @Patch('reservations/:id/deposit')
+  @Roles('admin', 'operator')
+  async reviewDeposit(@GetTenantId() tenantId: string, @Param('id') id: string, @Body() body: { approve?: boolean }) {
+    await this.dining.assertEnabled(tenantId);
+    return this.dining.reviewDeposit(tenantId, id, body?.approve === true);
+  }
+
   @Patch('reservations/:id/status')
   @Roles('admin', 'operator')
   async setStatus(@GetTenantId() tenantId: string, @Param('id') id: string, @Body() body: { status: ReservationStatus; reason?: string }) {

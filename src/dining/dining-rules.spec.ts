@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import {
-  ReservationLike, assertBookableDate, assertTransition, depositFor, diningSlots, findConflict, nextReservationCode,
+  ReservationLike, assertBookableDate, assertTransition, customerMayCancel, depositFor, onlineInitialStatus, diningSlots, findConflict, nextReservationCode,
   resolveDiningSettings, validateDiningSettings, validateTable,
 } from './dining-rules';
 import { bogotaToUtc } from '../orders/scheduling';
@@ -78,6 +78,18 @@ describe('Mesas y reservas', () => {
     expect(() => assertTransition('PENDING', 'CONFIRMED')).not.toThrow();
     expect(() => assertTransition('COMPLETED', 'SEATED')).toThrow(/finalizada/);
     expect(() => assertTransition('SEATED', 'CANCELLED')).toThrow(BadRequestException);
+  });
+
+  it('reservas de la tienda: estado inicial y cancelación del cliente', () => {
+    const manual = resolveDiningSettings({ confirmMode: 'manual' });
+    const auto = resolveDiningSettings({ confirmMode: 'auto' });
+    expect(onlineInitialStatus(auto, false)).toBe('CONFIRMED');
+    expect(onlineInitialStatus(manual, false)).toBe('PENDING');
+    // Con anticipo queda por confirmar hasta verificarlo, aunque la confirmación sea automática
+    expect(onlineInitialStatus(auto, true)).toBe('PENDING');
+    expect(customerMayCancel('CONFIRMED', at('19:00'), now)).toBe(true);
+    expect(customerMayCancel('CONFIRMED', at('13:00'), now)).toBe(false);
+    expect(customerMayCancel('SEATED', at('19:00'), now)).toBe(false);
   });
 
   it('códigos de reserva', () => {
