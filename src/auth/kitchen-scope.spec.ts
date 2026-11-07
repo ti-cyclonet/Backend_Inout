@@ -34,6 +34,7 @@ describe('Rol de cocina', () => {
     expect(kitchenMayMove('IN_PRODUCTION', 'READY', 'DELIVERY')).toBe(true);
     expect(kitchenMayMove('CONFIRMED', 'READY', null)).toBe(true);
     expect(kitchenMayMove('READY', 'DELIVERED', 'PICKUP')).toBe(true);
+    expect(kitchenMayMove('READY', 'DELIVERED', 'DINE_IN')).toBe(true);
     expect(kitchenMayMove('READY', 'DELIVERED', 'DELIVERY')).toBe(false);
     expect(kitchenMayMove('READY', 'OUT_FOR_DELIVERY', 'DELIVERY')).toBe(false);
     expect(kitchenMayMove('DELIVERED', 'INVOICED', 'PICKUP')).toBe(false);

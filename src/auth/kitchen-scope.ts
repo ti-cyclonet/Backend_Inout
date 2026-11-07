@@ -25,10 +25,10 @@ export function assertKitchenScope(role: unknown, method: string, url: string): 
   }
 }
 
-/** Lo que la cocina puede hacer con un pedido: empezar, marcar listo y entregar en el local. */
+/** Lo que la cocina puede hacer con un pedido: empezar, marcar listo y entregar en el local (recoger o comer allí). */
 export function kitchenMayMove(from: string, to: string, fulfillment: string | null | undefined): boolean {
   if (to === 'IN_PRODUCTION') return from === 'CONFIRMED';
   if (to === 'READY') return from === 'CONFIRMED' || from === 'IN_PRODUCTION';
-  if (to === 'DELIVERED') return from === 'READY' && fulfillment === 'PICKUP';
+  if (to === 'DELIVERED') return from === 'READY' && (fulfillment === 'PICKUP' || fulfillment === 'DINE_IN');
   return false;
 }
