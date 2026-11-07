@@ -6,7 +6,7 @@ describe('Funciones de mi negocio', () => {
   it('un restaurante trae la cocina; un negocio de moda no', () => {
     const rest = resolveModules('restaurant');
     expect(rest.kitchenLabel).toBe('Cocina');
-    expect(on(rest)).toEqual(['kitchen', 'combos', 'giftCards', 'credit', 'delivery']);
+    expect(on(rest)).toEqual(['kitchen', 'tables', 'combos', 'giftCards', 'credit', 'delivery']);
     expect(on(resolveModules('fashion'))).toEqual(['combos', 'giftCards', 'credit', 'delivery']);
   });
 
@@ -22,9 +22,10 @@ describe('Funciones de mi negocio', () => {
     expect(r.modules.find((m) => m.key === 'kitchen')).toMatchObject({ custom: true, recommended: true, name: 'Pantalla de preparación (Alistamiento)' });
   });
 
-  it('mesas está anunciado pero no se activa todavía', () => {
-    expect(resolveModules('restaurant', { tables: true }).modules.find((m) => m.key === 'tables')).toMatchObject({ enabled: false, recommended: true, available: false });
-    expect(validateModuleChange('tables', true)).toMatch(/pronto/);
+  it('mesas viene activo en restaurantes y se puede activar en manufactura', () => {
+    expect(resolveModules('restaurant').modules.find((m) => m.key === 'tables')).toMatchObject({ enabled: true, recommended: true, available: true });
+    expect(resolveModules('manufacturing').modules.find((m) => m.key === 'tables')).toMatchObject({ enabled: false, recommended: true });
+    expect(validateModuleChange('tables', true)).toEqual({ key: 'tables', enabled: true });
   });
 
   it('cocina oculta: sin mesas ni reservas, pero con pantalla de cocina', () => {

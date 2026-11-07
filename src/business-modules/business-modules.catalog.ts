@@ -61,7 +61,7 @@ export const MODULES: ModuleDef[] = [
     description: 'Plano del local, mesas en vivo y reservas desde la tienda online, con el pedido listo a la hora.',
     sectors: ['restaurant', 'manufacturing'],
     defaultOn: ['restaurant'],
-    available: false,
+    available: true,
   },
   {
     key: 'combos',
