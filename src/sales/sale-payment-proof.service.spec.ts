@@ -6,6 +6,7 @@ describe('SalePaymentProofService', () => {
   let sales: Record<string, any>;
   let upload: jest.Mock;
   let service: SalePaymentProofService;
+  let refs: { assertUnused: jest.Mock };
 
   beforeEach(() => {
     sales = {
@@ -18,7 +19,8 @@ describe('SalePaymentProofService', () => {
       save: jest.fn(async (s) => s),
     };
     upload = jest.fn(async () => ({ secure_url: 'https://res.cloudinary.com/x/volante.jpg' }));
-    service = new SalePaymentProofService(repo as any, { uploadImageFromBuffer: upload } as any);
+    refs = { assertUnused: jest.fn(async () => undefined) };
+    service = new SalePaymentProofService(repo as any, { uploadImageFromBuffer: upload } as any, refs as any);
   });
 
   it('guarda la foto del volante y el N° de aprobación', async () => {

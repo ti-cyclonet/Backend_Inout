@@ -15,6 +15,8 @@ import { resolveThanksMessages } from './thanks-messages';
 import { resolveDeliveryOptions } from './delivery-options';
 import { GiftCardsService } from './gift-cards/gift-cards.service';
 import { DiningService } from '../dining/dining.service';
+import { PaymentReferencesService } from '../payment-references/payment-references.service';
+import { REFERENCE_REQUIRED_MESSAGE, normalizeReference } from '../payment-references/payment-reference';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
@@ -53,6 +55,7 @@ export class OrderPaymentsService {
     private readonly brandingService: TenantBrandingService,
     private readonly giftCardsService: GiftCardsService,
     private readonly dining: DiningService,
+    private readonly refs: PaymentReferencesService,
   ) {}
 
   /**
@@ -98,6 +101,7 @@ export class OrderPaymentsService {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lockOrder(manager, { id: orderId, tenantId });
       const amount = this.validateInput(order, input);
+      await this.refs.assertUnused(tenantId, input.reference, [], manager);
       const payment = await manager.save(manager.create(OrderPayment, {
         tenantId,
         orderId,
@@ -131,6 +135,9 @@ export class OrderPaymentsService {
       throw new BadRequestException('Ya hay comprobantes por verificar que cubren el saldo del pedido.');
     }
 
+    // Un mismo comprobante no se usa en dos pagos
+    if (!normalizeReference(input.reference)) throw new BadRequestException(REFERENCE_REQUIRED_MESSAGE);
+    await this.refs.assertUnused(order.tenantId, input.reference);
     const uploaded = await this.cloudinaryService.uploadImageFromBuffer(file.buffer, 'inout/payment-vouchers', order.tenantId);
     return this.paymentRepository.save(this.paymentRepository.create({
       tenantId: order.tenantId,

@@ -17,9 +17,10 @@ import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 import { CreditModule } from '../credit/credit.module';
 import { TenantBrandingModule } from '../tenant-branding/tenant-branding.module';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { PaymentReferencesModule } from '../payment-references/payment-references.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule, PromotionsModule, CloudinaryModule],
+  imports: [PaymentReferencesModule, TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule, PromotionsModule, CloudinaryModule],
   controllers: [SalesController],
   providers: [SalesService, InvoicePdfService, SaleReceiptMailService, SalePaymentProofService],
   exports: [SalesService],

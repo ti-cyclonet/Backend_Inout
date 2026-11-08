@@ -64,6 +64,7 @@ import { TenantBrandingModule } from './tenant-branding/tenant-branding.module';
 import { BusinessModulesModule } from './business-modules/business-modules.module';
 import { TenantModules } from './business-modules/entities/tenant-modules.entity';
 import { DiningModule } from './dining/dining.module';
+import { PaymentReferencesModule } from './payment-references/payment-references.module';
 import { DiningTable } from './dining/entities/dining-table.entity';
 import { TableReservation } from './dining/entities/table-reservation.entity';
 import { DiningSettingsEntity } from './dining/entities/dining-settings.entity';
@@ -103,6 +104,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
     TenantBrandingModule,
     BusinessModulesModule,
     DiningModule,
+    PaymentReferencesModule,
     CombosModule,
     BarcodesModule,
     PromotionsModule,

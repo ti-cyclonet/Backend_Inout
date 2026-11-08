@@ -10,6 +10,7 @@ import {
   AssignCreditLimitDto, CreateCreditRequestDto, DecideCreditDto, MarketplaceCreditRequestDto, RegisterPaymentDto,
   SuspendCreditDto, UpdateCreditSettingsDto, ValidateCreditDto, VoidReceivableDto,
 } from './dto/credit.dto';
+import { PaymentReferencesService } from '../payment-references/payment-references.service';
 
 export interface Actor {
   id?: string | null;
@@ -59,6 +60,7 @@ export class CreditService {
     @InjectRepository(ReceivablePayment) private readonly paymentRepo: Repository<ReceivablePayment>,
     @InjectRepository(CreditSettings) private readonly settingsRepo: Repository<CreditSettings>,
     private readonly dataSource: DataSource,
+    private readonly refs: PaymentReferencesService,
   ) {}
 
   // ═══════════════════════ Configuración (mora y recordatorios) ═══════════════════════
@@ -418,7 +420,8 @@ export class CreditService {
    * capital (art. 1653 del Código Civil). Los intereses se causan hasta la
    * fecha del abono y quedan congelados en interestAccrued.
    */
-  async registerPayment(tenantId: string, actor: Actor, id: string, dto: RegisterPaymentDto) {
+  /** `fromVoucherId`: el abono nace de ese comprobante del cliente (su misma referencia no cuenta como repetida). */
+  async registerPayment(tenantId: string, actor: Actor, id: string, dto: RegisterPaymentDto, fromVoucherId?: string) {
     const settings = await this.getSettings(tenantId);
     return this.dataSource.transaction(async (manager) => {
       const r = await manager.findOne(Receivable, { where: { id, tenantId }, lock: { mode: 'pessimistic_write' } });
@@ -438,6 +441,7 @@ export class CreditService {
       const interestPortion = round2(Math.min(amount, pendingInterest));
       const capitalPortion = round2(amount - interestPortion);
 
+      await this.refs.assertUnused(tenantId, dto.reference, fromVoucherId ? [{ source: 'COMPROBANTE_CARTERA', id: fromVoucherId }] : [], manager);
       const payment = await manager.save(ReceivablePayment, manager.create(ReceivablePayment, {
         tenantId,
         receivableId: r.id,
