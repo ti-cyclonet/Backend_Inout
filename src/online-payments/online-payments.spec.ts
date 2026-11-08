@@ -152,6 +152,7 @@ describe('Pagos en línea · servicio', () => {
     expect(token).toBe('APP_USR-1');
     expect(pref).toEqual(expect.objectContaining({ marketplace_fee: 459, external_reference: `inout:t1:${order.id}` }));
     expect(pref.notification_url).toBe('https://api.cyclonet.com.co/api/inventory/online-payments/mercadopago/webhook?t=t1');
+    expect(pref.back_urls.success).toBe('https://app.cyclonet.com.co/marketplace/t1/pedido/' + 'x'.repeat(32) + '?pago=ok');
   });
 
   it('la notificación firmada de un pago aprobado lo registra verificado en el pedido', async () => {

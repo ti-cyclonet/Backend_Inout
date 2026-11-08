@@ -214,7 +214,8 @@ export class OnlinePaymentsService implements OnApplicationBootstrap {
     if (amount <= 0) throw new BadRequestException('Este pedido no tiene pagos pendientes en línea.');
 
     const accessToken = await this.accessToken(acc, c);
-    const trackUrl = `${c.appUrl}/marketplace/track/${trackingToken}`;
+    // Mismo enlace de seguimiento que recibe el cliente (marketplace/:tienda/pedido/:token)
+    const trackUrl = `${c.appUrl}/marketplace/${encodeURIComponent(order.tenantId)}/pedido/${trackingToken}`;
     const pref = await this.mp.createPreference(c, accessToken, {
       items: [{ id: order.id, title: `Pedido ${order.orderCode || ''}`.trim(), quantity: 1, unit_price: amount, currency_id: 'COP' }],
       external_reference: orderReference(order.tenantId, order.id),
