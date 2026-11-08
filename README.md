@@ -81,3 +81,22 @@ ALTER SCHEMA manufacturing OWNER TO postgres;
 ALTER SCHEMA inventory OWNER TO postgres;
 ```
 ---
+
+## 💳 Pagos en línea con Mercado Pago (apagado hasta configurar)
+
+Cada negocio conecta **su propia** cuenta de Mercado Pago (OAuth): el dinero de sus ventas le llega directo y CycloNet cobra su comisión con `marketplace_fee`. Mientras falte algo de lo siguiente, todo responde *"en configuración"* y los negocios solo pueden pedir **Avísame cuando esté disponible** (`src/online-payments`).
+
+| Variable | Para qué |
+|---|---|
+| `MERCADOPAGO_ENABLED=true` | Interruptor general. |
+| `MERCADOPAGO_CLIENT_ID` / `MERCADOPAGO_CLIENT_SECRET` | La aplicación de CycloNet en Mercado Pago Developers. |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Clave secreta de las notificaciones (valida `x-signature`). |
+| `INOUT_PUBLIC_API_URL` | Esta API vista desde internet, p. ej. `https://<host>/api/inventory`. |
+| `MERCADOPAGO_REDIRECT_URI` | Opcional; por defecto `<INOUT_PUBLIC_API_URL>/online-payments/mercadopago/callback` (debe registrarse en la aplicación). |
+| `PAYMENT_TOKENS_KEY` | 32+ caracteres para cifrar los tokens de cada negocio (AES-256-GCM). No cambiarla después: los tokens guardados dejarían de leerse. |
+| `ONLINE_PAYMENTS_COMMISSION_PERCENT` | Opcional, comisión de CycloNet (por defecto 1). |
+| `INOUT_APP_URL` | Para volver a InOut después de conectar o pagar. |
+
+Al reiniciar con todo configurado, se envía el correo `INOUT_ONLINE_PAYMENTS_AVAILABLE` (plantilla de Authoriza) a los negocios que pidieron aviso. Se puede repetir con `POST /api/online-payments/internal/notify-available` (cabecera `x-internal-key`).
+
+Flujo: el negocio conecta su cuenta en MarketPlace › Formas de pago → el cliente ve **Pagar con Mercado Pago** en el seguimiento del pedido (lo que falta del anticipo o el saldo) → Mercado Pago notifica el pago aprobado al webhook → se registra un pago `VERIFICADO` (método `MERCADOPAGO`, referencia `MP-<id>`, sin duplicados).
