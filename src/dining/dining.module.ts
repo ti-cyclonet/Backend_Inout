@@ -10,9 +10,10 @@ import { UsageCountersModule } from '../usage-counters/usage-counters.module';
 import { DiningPublicController } from './dining-public.controller';
 import { DiningService } from './dining.service';
 import { DiningController } from './dining.controller';
+import { PaymentReferencesModule } from '../payment-references/payment-references.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DiningTable, TableReservation, DiningSettingsEntity, MarketplaceConfig]), BusinessModulesModule, CloudinaryModule, UsageCountersModule],
+  imports: [PaymentReferencesModule, TypeOrmModule.forFeature([DiningTable, TableReservation, DiningSettingsEntity, MarketplaceConfig]), BusinessModulesModule, CloudinaryModule, UsageCountersModule],
   controllers: [DiningController, DiningPublicController],
   providers: [DiningService],
   exports: [DiningService],

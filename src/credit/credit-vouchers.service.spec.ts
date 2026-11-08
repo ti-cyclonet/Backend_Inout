@@ -16,7 +16,8 @@ function crear(opts: { status?: string; totalDue?: number; pending?: number[] } 
     registerPayment: jest.fn(async () => ({ paymentId: 'pay-1' })),
   };
   const cloudinary = { uploadImageFromBuffer: jest.fn(async () => ({ secure_url: 'https://res.cloudinary.com/x/comprobante.jpg' })) };
-  const service = new CreditVouchersService(voucherRepo as any, {} as any, creditService as any, {} as any, cloudinary as any, {} as any);
+  const refs = { assertUnused: jest.fn(async () => undefined) };
+  const service = new CreditVouchersService(voucherRepo as any, {} as any, creditService as any, {} as any, cloudinary as any, {} as any, refs as any);
   return { service, voucherRepo, creditService, cloudinary };
 }
 
@@ -50,7 +51,7 @@ describe('pago de cartera desde el enlace del recordatorio', () => {
   it('al verificar se registra el abono en Cartera', async () => {
     const { service, creditService } = crear({ pending: [12000] });
     const v = await service.review('t1', { id: 'u1', email: 'admin@tienda.co' }, 'v0', 'VERIFY');
-    expect(creditService.registerPayment).toHaveBeenCalledWith('t1', expect.anything(), 'r1', expect.objectContaining({ amount: 12000 }));
+    expect(creditService.registerPayment).toHaveBeenCalledWith('t1', expect.anything(), 'r1', expect.objectContaining({ amount: 12000 }), 'v0');
     expect(v).toMatchObject({ status: 'VERIFICADO', paymentId: 'pay-1', reviewedBy: 'admin@tienda.co' });
   });
 
