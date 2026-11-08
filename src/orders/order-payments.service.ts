@@ -18,6 +18,9 @@ import { DiningService } from '../dining/dining.service';
 import { PaymentReferencesService } from '../payment-references/payment-references.service';
 import { REFERENCE_REQUIRED_MESSAGE, normalizeReference } from '../payment-references/payment-reference';
 
+/** Medio de los pagos que confirma la pasarela (no se elige a mano). */
+export const ONLINE_PAYMENT_METHOD = 'MERCADOPAGO';
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** "$22.806": pesos enteros, como los muestra el frontend. */
 const cop = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
@@ -267,6 +270,38 @@ export class OrderPaymentsService {
         createdAt: p.createdAt,
       })),
     };
+  }
+
+  /**
+   * Pago en línea aprobado por la pasarela (Mercado Pago): entra ya verificado.
+   * Idempotente por la referencia del pago en la pasarela (las notificaciones
+   * pueden llegar varias veces). Si supera el saldo (p. ej. dos pagos casi al
+   * mismo tiempo) igual se registra, con una nota para que el negocio lo revise.
+   */
+  async registerOnlinePayment(input: { tenantId: string; orderId: string; amount: number; providerReference: string; notes?: string }) {
+    return this.dataSource.transaction(async (manager) => {
+      const order = await this.lockOrder(manager, { id: input.orderId, tenantId: input.tenantId });
+      const existing = await manager.findOne(OrderPayment, { where: { orderId: order.id, reference: input.providerReference } });
+      if (existing) return { payment: existing, order, duplicated: true };
+      const amount = round2(Number(input.amount));
+      const due = balanceDue(order);
+      const overpaid = amount - due >= 1;
+      const payment = await manager.save(manager.create(OrderPayment, {
+        tenantId: order.tenantId,
+        orderId: order.id,
+        amount,
+        method: ONLINE_PAYMENT_METHOD as any,
+        reference: input.providerReference.slice(0, 100),
+        voucherUrl: null,
+        source: 'CLIENTE',
+        status: 'VERIFICADO',
+        notes: [input.notes, overpaid ? `Pago en línea mayor que el saldo (${cop(due)}): revisa si hay que devolver la diferencia.` : null].filter(Boolean).join(' ') || null,
+        verifiedBy: 'mercadopago',
+        verifiedAt: new Date(),
+      }));
+      const updated = await this.recalculate(manager, order);
+      return { payment, order: updated, duplicated: false };
+    });
   }
 
   /** Suma lo VERIFICADO y actualiza amountPaid / paymentStatus del pedido. */
