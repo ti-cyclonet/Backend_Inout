@@ -9,6 +9,8 @@ import { PAYMENT_METHODS } from './entities/receivable-payment.entity';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { MarketplaceConfigService } from '../marketplace-config/marketplace-config.service';
 import { resolvePaymentOptions } from '../orders/payment-plans';
+import { PaymentReferencesService } from '../payment-references/payment-references.service';
+import { REFERENCE_REQUIRED_MESSAGE, normalizeReference } from '../payment-references/payment-reference';
 
 const VOUCHER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const VOUCHER_MAX_BYTES = 5 * 1024 * 1024;
@@ -32,6 +34,7 @@ export class CreditVouchersService {
     private readonly reminders: CreditRemindersService,
     private readonly cloudinary: CloudinaryService,
     private readonly marketplaceConfig: MarketplaceConfigService,
+    private readonly refs: PaymentReferencesService,
   ) {}
 
   /** Vista pública del enlace de pago (sin datos internos). */
@@ -88,6 +91,9 @@ export class CreditVouchersService {
         : 'El valor supera lo que debes.');
     }
 
+    // Un mismo comprobante no se usa en dos pagos
+    if (!normalizeReference(input?.reference)) throw new BadRequestException(REFERENCE_REQUIRED_MESSAGE);
+    await this.refs.assertUnused(entity.tenantId, input?.reference);
     const uploaded = await this.cloudinary.uploadImageFromBuffer(file.buffer, 'inout/credit-vouchers', entity.tenantId);
     const saved = await this.voucherRepo.save(this.voucherRepo.create({
       tenantId: entity.tenantId,
@@ -138,7 +144,7 @@ export class CreditVouchersService {
         method,
         reference: v.reference || undefined,
         notes: 'Comprobante subido por el cliente desde el enlace de pago',
-      } as any);
+      } as any, v.id);
       v.status = 'VERIFICADO';
       v.paymentId = result?.paymentId || null;
     }

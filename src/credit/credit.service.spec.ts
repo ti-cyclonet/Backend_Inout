@@ -2,7 +2,7 @@ import { CreditService, addDays, daysBetween } from './credit.service';
 import { Receivable, ReceivableStatus } from './entities/receivable.entity';
 import { CreditSettings } from './entities/credit-settings.entity';
 
-const service = new CreditService({} as any, {} as any, {} as any, {} as any, {} as any);
+const service = new CreditService({} as any, {} as any, {} as any, {} as any, {} as any, { assertUnused: async () => undefined } as any);
 
 const settings = (over: Partial<CreditSettings> = {}): CreditSettings =>
   ({ tenantId: 't', lateInterestMonthlyRate: 3, graceDays: 0, remindersEnabled: false, reminderDaysBefore: 3, overdueReminderEveryDays: 7, ...over }) as CreditSettings;

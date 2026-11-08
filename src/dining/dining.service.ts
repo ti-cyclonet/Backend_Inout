@@ -17,6 +17,8 @@ import {
   customerMayCancel, depositFor, diningSlots, findConflict, nextReservationCode, onlineInitialStatus,
   resolveDiningSettings, validateDiningSettings, validateTable,
 } from './dining-rules';
+import { PaymentReferencesService } from '../payment-references/payment-references.service';
+import { REFERENCE_REQUIRED_MESSAGE, normalizeReference } from '../payment-references/payment-reference';
 
 const PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const PROOF_MAX_BYTES = 5 * 1024 * 1024;
@@ -71,6 +73,7 @@ export class DiningService {
     private readonly dataSource: DataSource,
     private readonly cloudinary: CloudinaryService,
     private readonly limits: LimitEnforcementService,
+    private readonly refs: PaymentReferencesService,
   ) {}
 
   /** Mesas y reservas debe estar activo en Funciones de mi negocio. */
@@ -506,6 +509,9 @@ export class DiningService {
     if (!file || !PROOF_TYPES.includes(file.mimetype) || file.size > PROOF_MAX_BYTES) {
       throw new BadRequestException('Adjunta la foto del comprobante: JPG, PNG o WEBP de máximo 5 MB.');
     }
+    // Un mismo comprobante no se usa en dos pagos
+    if (!normalizeReference(reference)) throw new BadRequestException(REFERENCE_REQUIRED_MESSAGE);
+    await this.refs.assertUnused(r.tenantId, reference, [{ source: 'RESERVA', id: r.id }]);
     const uploaded = await this.cloudinary.uploadImageFromBuffer(file.buffer, 'inout/reservation-deposits', r.tenantId);
     r.depositProofUrl = uploaded.secure_url;
     r.depositReference = text(reference, 100);

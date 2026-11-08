@@ -21,9 +21,10 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { GiftCard, GiftCardMovement } from './gift-cards/gift-card.entity';
 import { GiftCardsService } from './gift-cards/gift-cards.service';
 import { GiftCardsController, GiftCardsMarketplaceController } from './gift-cards/gift-cards.controller';
+import { PaymentReferencesModule } from '../payment-references/payment-references.module';
 
 @Module({
-  imports: [
+  imports: [PaymentReferencesModule, 
     TypeOrmModule.forFeature([Order, Product, InventoryMovement, OrderPayment, OrderSettings, GiftCard, GiftCardMovement]),
     UsageCountersModule,
     CreditModule,

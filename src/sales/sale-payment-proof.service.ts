@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Sale } from './entities/sale.entity';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { PaymentReferencesService } from '../payment-references/payment-references.service';
 
 export const PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const PROOF_MAX_BYTES = 5 * 1024 * 1024;
@@ -17,6 +18,7 @@ export class SalePaymentProofService {
   constructor(
     @InjectRepository(Sale) private readonly sales: Repository<Sale>,
     private readonly cloudinary: CloudinaryService,
+    private readonly refs: PaymentReferencesService,
   ) {}
 
   async attach(tenantId: string, saleId: string, file: Express.Multer.File | undefined, reference: unknown): Promise<Sale> {
@@ -27,6 +29,8 @@ export class SalePaymentProofService {
     }
     const sale = await this.sales.findOne({ where: { strId: saleId, strTenantId: tenantId } });
     if (!sale) throw new NotFoundException('Venta no encontrada.');
+    // Un mismo soporte no se usa en dos transacciones
+    if (ref) await this.refs.assertUnused(tenantId, ref, [{ source: 'VENTA', id: saleId }]);
     const methods = Array.isArray(sale.payments) && sale.payments.length ? sale.payments.map((p) => String(p.method).toUpperCase()) : [String(sale.paymentMethod || 'EFECTIVO').toUpperCase()];
     if (String(sale.paymentType || '').toUpperCase() === 'CREDITO' || methods.every((m) => m === 'EFECTIVO')) {
       throw new BadRequestException('El volante aplica a ventas de contado con tarjeta, transferencia u otro medio que no sea efectivo.');
