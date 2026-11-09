@@ -100,3 +100,11 @@ Cada negocio conecta **su propia** cuenta de Mercado Pago (OAuth): el dinero de 
 Al reiniciar con todo configurado, se envía el correo `INOUT_ONLINE_PAYMENTS_AVAILABLE` (plantilla de Authoriza) a los negocios que pidieron aviso. Se puede repetir con `POST /api/online-payments/internal/notify-available` (cabecera `x-internal-key`).
 
 Flujo: el negocio conecta su cuenta en MarketPlace › Formas de pago → el cliente ve **Pagar con Mercado Pago** en el seguimiento del pedido (lo que falta del anticipo o el saldo) → Mercado Pago notifica el pago aprobado al webhook → se registra un pago `VERIFICADO` (método `MERCADOPAGO`, referencia `MP-<id>`, sin duplicados).
+
+## 🧾 Facturación electrónica (complemento del contrato)
+
+El núcleo (emisores, numeración, documentos, proveedor tecnológico) vive en **Authoriza** (`/api/einvoicing`, ver su README). InOut (`src/einvoicing`):
+- **Configuración › Facturación electrónica** (`/api/einvoicing/*`, rol admin): estado y oferta, solicitar el complemento aceptando los términos, datos fiscales, resolución de numeración y cancelar. Mientras CycloNet no defina el proveedor, responde «en configuración».
+- **Ventas directas:** con el complemento ACTIVO, cada venta emite su documento después del commit, sin bloquear la venta. Es **factura** si el cliente tiene documento y correo, o si la venta es a crédito; si no, es **POS electrónico**. El descuento de InOut, que va después del IVA, se convierte a descuento antes del impuesto para que el total sea el mismo. Anular la venta emite una **nota crédito**. El estado queda en `sales.strEinvoice*`, y si quedó con error se reintenta con `POST /api/einvoicing/sales/:id/retry`.
+
+Requiere `AUTHORIZA_API_URL` e `INTERNAL_API_KEY`, ya configuradas.
