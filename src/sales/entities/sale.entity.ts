@@ -86,4 +86,22 @@ export class Sale {
   /** Correo de quien la anuló. */
   @Column({ type: 'varchar', length: 255, nullable: true })
   strVoidedBy: string | null;
+
+  // Facturación electrónica (la emite Authoriza por el proveedor tecnológico):
+  // documento de la venta (factura o POS), su estado, la nota crédito si se
+  // anuló y el último error (para reintentar desde el detalle).
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  strEinvoiceId: string | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  strEinvoiceNumber: string | null;
+
+  @Column({ type: 'varchar', length: 15, nullable: true })
+  strEinvoiceStatus: string | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  strEinvoiceCreditNote: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  strEinvoiceMessage: string | null;
 }
