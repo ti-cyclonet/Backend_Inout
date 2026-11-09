@@ -66,6 +66,7 @@ import { TenantModules } from './business-modules/entities/tenant-modules.entity
 import { DiningModule } from './dining/dining.module';
 import { PaymentReferencesModule } from './payment-references/payment-references.module';
 import { OnlinePaymentsModule } from './online-payments/online-payments.module';
+import { EinvoicingModule } from './einvoicing/einvoicing.module';
 import { TenantPaymentAccount } from './online-payments/tenant-payment-account.entity';
 import { DiningTable } from './dining/entities/dining-table.entity';
 import { TableReservation } from './dining/entities/table-reservation.entity';
@@ -108,6 +109,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
     DiningModule,
     PaymentReferencesModule,
     OnlinePaymentsModule,
+    EinvoicingModule,
     CombosModule,
     BarcodesModule,
     PromotionsModule,

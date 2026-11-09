@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Optional, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull } from 'typeorm';
 import { Sale } from './entities/sale.entity';
@@ -9,6 +9,7 @@ import { InventoryMovement } from '../inventory-movements/entities/inventory-mov
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { BusinessParamsService, taxOn } from '../config/business-params.service';
+import { EinvoicingService } from '../einvoicing/einvoicing.service';
 import { addDays, CreditService, todayCo } from '../credit/credit.service';
 import { applyStockDelta, assertStockAvailable, movementTarget, ResolvedStockLine, StockLine } from '../common/stock-availability';
 import { expandComboLines } from '../combos/combo-lines';
@@ -35,6 +36,7 @@ export class SalesService {
     private businessParamsService: BusinessParamsService,
     private creditService: CreditService,
     private pricingService: PricingService,
+    @Optional() private einvoicing?: EinvoicingService,
   ) {}
 
   private async generateInvoiceCode(tenantId: string): Promise<string> {
@@ -234,6 +236,10 @@ export class SalesService {
 
       await queryRunner.commitTransaction();
 
+      // Facturación electrónica (si el negocio la tiene activa): después del
+      // commit y sin esperar, para que la venta nunca dependa de la DIAN
+      if (this.einvoicing) setImmediate(() => this.einvoicing!.emitForSale(tenantId, savedSale.strId).catch(() => {}));
+
       // Calcular puntos de fidelidad (no transaccional)
       let loyaltyPoints = 0;
       try {
@@ -269,7 +275,7 @@ export class SalesService {
     const why = String(reason || '').trim();
     if (!why) throw new BadRequestException('Escribe el motivo de la anulación.');
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const sale = await manager.findOne(Sale, { where: { strId: id, strTenantId: tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!sale) throw new NotFoundException('Venta no encontrada');
       if (sale.dtmVoidedAt) throw new BadRequestException(`La venta ${sale.strInvoiceCode} ya está anulada.`);
@@ -311,6 +317,9 @@ export class SalesService {
       await manager.save(sale);
       return { message: `Venta ${code} anulada`, sale, restoredItems: outs.length };
     });
+    // Con documento electrónico, la anulación es una nota crédito (la venta electrónica no se borra)
+    if (this.einvoicing) setImmediate(() => this.einvoicing!.creditNoteForSale(tenantId, id, why).catch(() => {}));
+    return result;
   }
 
   async findAll(tenantId: string, includeVoided = false) {

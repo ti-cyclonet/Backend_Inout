@@ -1,3 +1,4 @@
+import { EinvoicingModule } from '../einvoicing/einvoicing.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SalesService } from './sales.service';
@@ -20,7 +21,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { PaymentReferencesModule } from '../payment-references/payment-references.module';
 
 @Module({
-  imports: [PaymentReferencesModule, TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule, PromotionsModule, CloudinaryModule],
+  imports: [EinvoicingModule, PaymentReferencesModule, TypeOrmModule.forFeature([Sale, Product, CompositionTwo, CompositionThree, InventoryMovement, Order, Customer]), UsageCountersModule, CreditModule, TenantBrandingModule, PromotionsModule, CloudinaryModule],
   controllers: [SalesController],
   providers: [SalesService, InvoicePdfService, SaleReceiptMailService, SalePaymentProofService],
   exports: [SalesService],
