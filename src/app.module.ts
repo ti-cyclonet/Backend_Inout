@@ -83,6 +83,8 @@ import { ComboComponent } from './combos/entities/combo-component.entity';
 import { ComboAssembly } from './combos/entities/combo-assembly.entity';
 import { MarketplaceItemStat } from './marketplace-config/entities/marketplace-item-stat.entity';
 import { PlatformSetting } from './marketplace-config/entities/platform-setting.entity';
+import { ProductReviewsModule } from './product-reviews/product-reviews.module';
+import { ProductReview } from './product-reviews/entities/product-review.entity';
 
 @Module({
   imports: [
@@ -97,7 +99,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       schema: 'manufacturing',
-      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, ReceivableVoucher, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement, PlatformSetting, MarketFeatured, ItemBarcode, TenantModules, DiningTable, TableReservation, DiningSettingsEntity, TenantPaymentAccount],
+      entities: [Material, MaterialImage, Activity, MaterialT, CompositionOne, Supplier, PurchaseRecord, Category, InventoryMovement, Product, ProductComposition, CompositionTwo, CompositionThree, ProductProduction, ProductionPlan, Sale, Customer, MarketplaceConfig, UsageCounter, TrainingSession, Order, Warehouse, WarehouseLocation, StockTransfer, PhysicalCount, CreditAccount, Receivable, ReceivablePayment, ReceivableVoucher, CreditSettings, OrderPayment, OrderSettings, TenantBranding, Combo, ComboComponent, ComboAssembly, Promotion, MarketplaceItemStat, GiftCard, GiftCardMovement, PlatformSetting, MarketFeatured, ItemBarcode, TenantModules, DiningTable, TableReservation, DiningSettingsEntity, TenantPaymentAccount, ProductReview],
       synchronize: true,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       extra: {
@@ -137,6 +139,7 @@ import { PlatformSetting } from './marketplace-config/entities/platform-setting.
     CreditModule,
     DashboardModule,
     FeedbackModule,
+    ProductReviewsModule,
   ],
 })
 export class AppModule implements NestModule {
