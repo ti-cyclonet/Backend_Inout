@@ -52,6 +52,8 @@ export class MarketplaceConfigService {
       if (dto.displayMode) {
         config.displayMode = dto.displayMode;
       }
+      // Paleta del tema: undefined = no cambia; '' o null = la original
+      if (dto.palette !== undefined) config.palette = dto.palette || null;
       // Update slug if provided
       if ((dto as any).slug) {
         await this.validateSlug((dto as any).slug, config.id);
@@ -63,6 +65,7 @@ export class MarketplaceConfigService {
         tenantId: dto.tenantId,
         selectedProductIds: dto.selectedProductIds || [],
         displayMode: dto.displayMode || 'grid',
+        palette: dto.palette || null,
         slug,
       });
     }

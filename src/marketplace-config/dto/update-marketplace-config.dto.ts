@@ -1,4 +1,7 @@
-import { IsArray, IsOptional, IsString, IsIn } from 'class-validator';
+import { IsArray, IsOptional, IsString, IsIn, Matches, ValidateIf } from 'class-validator';
+
+/** Nombre de paleta: minúsculas sin espacios ("rojo", "verde"). */
+export const PALETTE_PATTERN = /^[a-z]{2,20}$/;
 
 /** Modos de visualización del catálogo (deben coincidir con grid-themes.ts y MENU_VARIANTS del frontend). */
 // La columna admite 10 caracteres: por eso Boutique se guarda como grid-chic.
@@ -21,4 +24,13 @@ export class UpdateMarketplaceConfigDto {
   // Menú: menu = Póster, menu-chalk = Pizarra, menu-clean = Elegante.
   @IsIn(DISPLAY_MODES)
   displayMode?: string;
+
+  /**
+   * Paleta del tema (la lista por tema vive en el frontend: theme-palettes.ts).
+   * '' o null vuelve a la paleta original del tema.
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== '')
+  @Matches(PALETTE_PATTERN, { message: 'Paleta no válida.' })
+  palette?: string | null;
 }
