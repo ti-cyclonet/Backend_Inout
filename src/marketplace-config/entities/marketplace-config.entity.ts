@@ -59,6 +59,10 @@ export class MarketplaceConfig {
   @Column({ type: 'json', nullable: true })
   menuExtras: Record<string, any> | null;
 
+  /** Opiniones de clientes: activas y si se publican sin revisión (ver product-reviews-rules.ts). Null = apagadas. */
+  @Column({ type: 'json', nullable: true })
+  reviews: Record<string, any> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

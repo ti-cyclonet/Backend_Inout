@@ -36,6 +36,11 @@ export class MarketplaceConfigService {
     }));
   }
 
+  /** Guarda una configuración ya cargada (la usan otros módulos, p. ej. opiniones). */
+  async save(config: MarketplaceConfig): Promise<MarketplaceConfig> {
+    return this.marketplaceConfigRepository.save(config);
+  }
+
   async updateConfig(dto: UpdateMarketplaceConfigDto): Promise<MarketplaceConfig> {
     let config = await this.marketplaceConfigRepository.findOne({
       where: { tenantId: dto.tenantId },
