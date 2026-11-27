@@ -35,6 +35,14 @@ export class MarketplaceConfig {
   @Column({ type: 'varchar', length: 10, default: 'grid' })
   displayMode: string;
 
+  /**
+   * Paleta de colores del tema elegido (p. ej. "rojo" en Póster). Null = la
+   * paleta original del tema. Va aparte de displayMode porque esa columna es
+   * de 10 caracteres y cambiarle el largo hace que synchronize la recree.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  palette: string | null;
+
   /** Formas de pago que ofrece la tienda (ver orders/payment-plans.ts). Null = valores por defecto. */
   @Column({ type: 'json', nullable: true })
   paymentOptions: Record<string, any> | null;
